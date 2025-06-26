@@ -1,0 +1,18 @@
+{
+  "is_active": true,
+  "current_focus": null,
+  "last_activity_at": "2025-06-26T09:32:58.905774",
+  "recent_commands": [
+    {
+      "command": "exec dir",
+      "timestamp": "2025-06-26T09:32:50.544681"
+    },
+    {
+      "command": "write test.txt \"hello\"",
+      "timestamp": "2025-06-26T09:32:58.905774"
+    }
+  ],
+  "tracked_files": {},
+  "current_directory": "C:\\Users\\gilbe\\Documents\\GitHub\\Coddy V2",
+  "todos": []
+}

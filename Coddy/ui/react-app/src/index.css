@@ -1,0 +1,4 @@
+/* You can add global styles here, but Tailwind is preferred */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

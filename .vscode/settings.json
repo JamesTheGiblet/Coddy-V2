@@ -1,0 +1,6 @@
+{
+    "python.analysis.extraPaths": [
+        "./Coddy/core",
+        "./Coddy/ui"
+    ]
+}
