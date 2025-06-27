@@ -76,6 +76,9 @@ class GitAnalyzer:
         """
         try:
             return await self._run_git_command(["status", "--short"])
+        except subprocess.CalledProcessError as e:
+            # For status, it's more useful to return the stderr message
+            return e.stderr
         except Exception as e:
             # Return an informative error message instead of re-raising for status
             return f"Error getting Git status: {e}"

@@ -8,41 +8,47 @@ from unittest.mock import AsyncMock, patch
 from core.git_analyzer import GitAnalyzer # Assuming core is in sys.path or accessible
 
 # Fixture for a temporary Git repository
-@pytest.fixture
-async def temp_git_repo(tmp_path):
+@pytest.fixture(scope="function")
+def temp_git_repo(tmp_path):
     """
     Creates a temporary Git repository for testing.
     Initializes a git repo, makes a commit, and creates a new branch.
+    This is a synchronous fixture to avoid issues with async fixture resolution.
     """
-    repo_path = tmp_path / "test_repo"
+    repo_path = tmp_path / "test_repo" # tmp_path ensures this is cleaned up
     repo_path.mkdir()
-    original_cwd = os.getcwd()
-    os.chdir(repo_path) # Change CWD to perform git commands
 
-    try:
-        # Initialize repo
-        await asyncio.create_subprocess_exec("git", "init", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE).wait()
-        await asyncio.create_subprocess_exec("git", "config", "user.email", "test@example.com", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE).wait()
-        await asyncio.create_subprocess_exec("git", "config", "user.name", "Test User", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE).wait()
+    def run_git_command_sync(*args):
+        process = subprocess.run(
+            ["git", *args],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if process.returncode != 0:
+            raise RuntimeError(f"Git command failed in fixture: git {' '.join(args)}\nSTDERR: {process.stderr}")
 
-        # Initial commit
-        (repo_path / "README.md").write_text("Hello, World!")
-        await asyncio.create_subprocess_exec("git", "add", "README.md", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE).wait()
-        await asyncio.create_subprocess_exec("git", "commit", "-m", "Initial commit", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE).wait()
+    # Initialize repo and set a deterministic default branch
+    run_git_command_sync("init")
+    run_git_command_sync("checkout", "-b", "main")
+    run_git_command_sync("config", "user.email", "test@example.com")
+    run_git_command_sync("config", "user.name", "Test User")
 
-        # Another commit
-        (repo_path / "file1.txt").write_text("Content 1")
-        await asyncio.create_subprocess_exec("git", "add", "file1.txt", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE).wait()
-        await asyncio.create_subprocess_exec("git", "commit", "-m", "Add file1", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE).wait()
+    # Initial commit
+    (repo_path / "README.md").write_text("Hello, World!")
+    run_git_command_sync("add", "README.md")
+    run_git_command_sync("commit", "-m", "Initial commit")
 
-        # Create a new branch
-        await asyncio.create_subprocess_exec("git", "branch", "feature-branch", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE).wait()
+    # Another commit
+    (repo_path / "file1.txt").write_text("Content 1")
+    run_git_command_sync("add", "file1.txt")
+    run_git_command_sync("commit", "-m", "Add file1")
 
-        yield repo_path
+    # Create a new branch
+    run_git_command_sync("branch", "feature-branch")
 
-    finally:
-        os.chdir(original_cwd) # Revert CWD
-        shutil.rmtree(repo_path) # Clean up
+    return repo_path
 
 @pytest.mark.asyncio
 class TestGitAnalyzer:
@@ -60,17 +66,18 @@ class TestGitAnalyzer:
     async def test_get_branches(self, temp_git_repo):
         analyzer = GitAnalyzer(repo_path=str(temp_git_repo))
         branches = await analyzer.get_branches()
-        assert "main" in branches or "master" in branches # Depending on git default branch name
+        assert "main" in branches
         assert "feature-branch" in branches
-        assert len(branches) >= 2 # At least main/master and feature-branch
+        assert len(branches) == 2
 
     async def test_get_current_branch(self, temp_git_repo):
         analyzer = GitAnalyzer(repo_path=str(temp_git_repo))
         current_branch = await analyzer.get_current_branch()
-        assert current_branch == "main" or current_branch == "master" # Depending on git default
+        assert current_branch == "main"
 
         # Checkout feature branch and test again
-        await asyncio.create_subprocess_exec("git", "checkout", "feature-branch", cwd=temp_git_repo, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE).wait()
+        process = await asyncio.create_subprocess_exec("git", "checkout", "feature-branch", cwd=temp_git_repo, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        await process.wait()
         current_branch = await analyzer.get_current_branch()
         assert current_branch == "feature-branch"
 
@@ -86,30 +93,32 @@ class TestGitAnalyzer:
 
     async def test_git_not_found(self, tmp_path):
         # Temporarily mock subprocess_exec to simulate git not found
-        with patch('asyncio.create_subprocess_exec', new=AsyncMock(side_effect=FileNotFoundError)):
+        with patch('core.git_analyzer.GitAnalyzer._run_git_command', new=AsyncMock(side_effect=FileNotFoundError("Git command not found"))):
             analyzer = GitAnalyzer(repo_path=str(tmp_path))
-            with pytest.raises(FileNotFoundError, match="Git command not found"):
-                await analyzer.get_status()
+            status = await analyzer.get_status()
+            assert "Git command not found" in status
 
-    async def test_invalid_repo_path(self, tmp_path):
-        # Test with a non-existent directory
-        non_existent_path = tmp_path / "non_existent_repo"
-        analyzer = GitAnalyzer(repo_path=str(non_existent_path))
+    async def test_not_a_git_repo(self, tmp_path):
+        # Test with an existing directory that is not a Git repository
+        not_a_repo_path = tmp_path / "not_a_repo"
+        not_a_repo_path.mkdir()
+        analyzer = GitAnalyzer(repo_path=str(not_a_repo_path))
         status = await analyzer.get_status()
-        assert "not a git repository" in status.lower() or "fatal: not a git repository" in status.lower()
+        assert "not a git repository" in status.lower()
 
     async def test_git_command_error(self, temp_git_repo):
         analyzer = GitAnalyzer(repo_path=str(temp_git_repo))
         # Use a command that will surely fail (e.g., non-existent subcommand)
-        status = await analyzer._run_git_command(["non-existent-command"])
-        assert "usage:" in status.lower() or "unknown command" in status.lower()
+        with pytest.raises(subprocess.CalledProcessError) as excinfo:
+            await analyzer._run_git_command(["non-existent-command"])
+        error_output = excinfo.value.stderr.lower()
+        assert "is not a git command" in error_output
 
-    @pytest.mark.asyncio
     @patch('core.git_analyzer.IdeaSynthesizer') # Mock IdeaSynthesizer
     async def test_summarize_repo_activity(self, MockIdeaSynthesizer, temp_git_repo):
         # Setup mock IdeaSynthesizer instance and its summarize method
         mock_idea_synthesizer_instance = MockIdeaSynthesizer.return_value
-        mock_idea_synthesizer_instance.summarize_text.return_value = "AI-generated summary of repo activity."
+        mock_idea_synthesizer_instance.summarize_text = AsyncMock(return_value="AI-generated summary of repo activity.")
 
         analyzer = GitAnalyzer(repo_path=str(temp_git_repo))
         

@@ -156,6 +156,23 @@ class IdeaSynthesizer:
         print("Idea generation complete.")
         return generated_ideas
 
+    async def summarize_text(self, prompt: str, temperature: float = 0.5, top_p: float = 0.95) -> str:
+        """
+        Generates a summary for a given text using the LLM.
+
+        Args:
+            prompt: The text prompt to send to the LLM for summarization.
+            temperature: Controls the randomness of the output. Lower is better for summaries.
+            top_p: The nucleus sampling parameter.
+
+        Returns:
+            The generated summary text from the LLM.
+        """
+        print(f"Generating summary for prompt: '{prompt[:70]}...'")
+        summary = await self._generate_text_from_llm(prompt, temperature=temperature, top_p=top_p)
+        return summary
+
+
 # Example Usage (for testing the IdeaSynthesizer)
 async def main_test_idea_synth():
     print("\n--- Testing IdeaSynthesizer ---")
