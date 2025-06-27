@@ -4,21 +4,13 @@ import asyncio
 import os
 import sys
 import shutil
-import io # Added for StringIO
 from unittest.mock import patch, AsyncMock, MagicMock
 
 import aiofiles
-
-# Add Coddy/core to the Python path for importing utility_functions
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'core')))
-# Add Coddy/ui to the Python path for importing cli
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'ui')))
-
-# Import functions from Coddy/core/utility_functions.py
-from utility_functions import safe_path, read_file, write_file, list_files, execute_command, PROJECT_ROOT
-
-# Import functions from Coddy/ui/cli.py for integration test
-from cli import handle_instruction # We will test handle_instruction directly
+from core.utility_functions import (PROJECT_ROOT, execute_command,
+                                            list_files, read_file, safe_path,
+                                            write_file)
+from ui.cli import handle_instruction
 
 class TestCoreUtilityFunctions(unittest.IsolatedAsyncioTestCase):
     """
@@ -128,90 +120,103 @@ class TestCliInterface(unittest.IsolatedAsyncioTestCase):
     """
 
     async def asyncSetUp(self):
-        """Set up mocks for stdin/stdout and file operations."""
-        self.mock_stdout = io.StringIO() # Use StringIO to capture print output
-        self.patch_stdout = patch('sys.stdout', self.mock_stdout)
-        self.patch_stdout.start()
+        """Set up mocks for file operations and services."""
+        # Patch the websocket sender to capture all output messages.
+        patch_websocket = patch('ui.cli.send_to_websocket_server', new_callable=AsyncMock)
+        self.mock_send_to_websocket_server = patch_websocket.start()
+        self.addCleanup(patch_websocket.stop)
 
-        self.mock_stdin = MagicMock(spec=sys.stdin)
-        self.patch_stdin = patch('sys.stdin', self.mock_stdin)
-        self.patch_stdin.start()
+        # Patch services to avoid "not initialized" warnings and allow for testing interactions.
+        patch_memory_service = patch('ui.cli.memory_service', new_callable=MagicMock)
+        self.mock_memory_service = patch_memory_service.start()
+        self.mock_memory_service.store_memory = AsyncMock()
+        self.addCleanup(patch_memory_service.stop)
 
+        patch_vibe_engine = patch('ui.cli.vibe_engine', new_callable=MagicMock)
+        self.mock_vibe_engine = patch_vibe_engine.start()
+        self.mock_vibe_engine.update_activity = AsyncMock()
+        self.addCleanup(patch_vibe_engine.stop)
+
+        # Create async mocks for file operations
         self.mock_read_file = AsyncMock(return_value="file content")
         self.mock_write_file = AsyncMock()
         self.mock_list_files = AsyncMock(return_value=["file1.txt", "dir1/"])
         self.mock_execute_command = AsyncMock(return_value=(0, "cmd output", ""))
 
-        self.patch_read = patch('cli.read_file', self.mock_read_file)
-        self.patch_write = patch('cli.write_file', self.mock_write_file)
-        self.patch_list = patch('cli.list_files', self.mock_list_files)
-        self.patch_exec = patch('cli.execute_command', self.mock_execute_command)
+        # Patch the functions in the 'cli' module where they are used.
+        patch_read = patch('ui.cli.read_file', self.mock_read_file)
+        patch_read.start()
+        self.addCleanup(patch_read.stop)
 
-        self.patch_read.start()
-        self.patch_write.start()
-        self.patch_list.start()
-        self.patch_exec.start()
+        patch_write = patch('ui.cli.write_file', self.mock_write_file)
+        patch_write.start()
+        self.addCleanup(patch_write.stop)
 
-    async def asyncTearDown(self):
-        """Clean up mocks."""
-        self.patch_stdout.stop()
-        self.patch_stdin.stop()
-        self.patch_read.stop()
-        self.patch_write.stop()
-        self.patch_list.stop()
-        self.patch_exec.stop()
+        patch_list = patch('ui.cli.list_files', self.mock_list_files)
+        patch_list.start()
+        self.addCleanup(patch_list.stop)
+
+        patch_exec = patch('ui.cli.execute_command', self.mock_execute_command)
+        patch_exec.start()
+        self.addCleanup(patch_exec.stop)
 
     async def test_handle_read_command(self):
         """Test `read` command in CLI."""
         await handle_instruction("read test.txt")
         self.mock_read_file.assert_called_once_with("test.txt")
-        captured_output = self.mock_stdout.getvalue()
-        self.assertIn("Processing instruction: 'read test.txt'", captured_output)
-        self.assertIn("Content of 'test.txt':", captured_output)
-        self.assertIn("file content", captured_output)
+        sent_messages = [call.args[0]['text'] for call in self.mock_send_to_websocket_server.call_args_list]
+        all_output = "\n".join(sent_messages)
+        self.assertIn("Coddy> read test.txt", all_output)
+        self.assertIn("Content of 'test.txt':\n---\nfile content\n---", all_output)
+        self.assertIn("Successfully read 'test.txt'.", all_output)
 
 
     async def test_handle_write_command(self):
         """Test `write` command in CLI."""
         await handle_instruction("write new_file.txt Some content here.")
         self.mock_write_file.assert_called_once_with("new_file.txt", "Some content here.")
-        captured_output = self.mock_stdout.getvalue()
-        self.assertIn("Processing instruction: 'write new_file.txt Some content here.'", captured_output)
-        self.assertIn("Successfully wrote content to 'new_file.txt'.", captured_output)
+        sent_messages = [call.args[0]['text'] for call in self.mock_send_to_websocket_server.call_args_list]
+        all_output = "\n".join(sent_messages)
+        self.assertIn("Coddy> write new_file.txt Some content here.", all_output)
+        self.assertIn("Successfully wrote content to 'new_file.txt'.", all_output)
 
     async def test_handle_list_command(self):
         """Test `list` command in CLI."""
         await handle_instruction("list my_dir/")
         self.mock_list_files.assert_called_once_with("my_dir/")
-        captured_output = self.mock_stdout.getvalue()
-        self.assertIn("Processing instruction: 'list my_dir/'", captured_output)
-        self.assertIn("Files and directories in 'my_dir/':", captured_output)
-        self.assertIn("- file1.txt", captured_output)
+        sent_messages = [call.args[0]['text'] for call in self.mock_send_to_websocket_server.call_args_list]
+        all_output = "\n".join(sent_messages)
+        self.assertIn("Coddy> list my_dir/", all_output)
+        self.assertIn("Files and directories in 'my_dir/':", all_output)
+        self.assertIn("- file1.txt", all_output)
 
     async def test_handle_exec_command(self):
         """Test `exec` command in CLI."""
         await handle_instruction("exec echo hello")
         self.mock_execute_command.assert_called_once_with("echo hello")
-        captured_output = self.mock_stdout.getvalue()
-        self.assertIn("Processing instruction: 'exec echo hello'", captured_output)
-        self.assertIn("Command 'echo hello' executed.", captured_output)
-        self.assertIn("STDOUT:\ncmd output", captured_output)
+        sent_messages = [call.args[0]['text'] for call in self.mock_send_to_websocket_server.call_args_list]
+        all_output = "\n".join(sent_messages)
+        self.assertIn("Coddy> exec echo hello", all_output)
+        self.assertIn("Command 'echo hello' executed.", all_output)
+        self.assertIn("STDOUT:\ncmd output", all_output)
 
     async def test_handle_unknown_command(self):
         """Test unknown command in CLI."""
         await handle_instruction("unrecognized_command arg1 arg2")
-        captured_output = self.mock_stdout.getvalue()
-        self.assertIn("Processing instruction: 'unrecognized_command arg1 arg2'", captured_output)
-        self.assertIn("Unknown instruction.", captured_output)
+        sent_messages = [call.args[0]['text'] for call in self.mock_send_to_websocket_server.call_args_list]
+        all_output = "\n".join(sent_messages)
+        self.assertIn("Coddy> unrecognized_command arg1 arg2", all_output)
+        self.assertIn("Unknown instruction.", all_output)
 
     @patch('sys.exit')
     async def test_handle_exit_command(self, mock_exit):
         """Test `exit` command in CLI."""
         await handle_instruction("exit")
         mock_exit.assert_called_once_with(0)
-        captured_output = self.mock_stdout.getvalue()
-        self.assertIn("Processing instruction: 'exit'", captured_output)
-        self.assertIn("Exiting Coddy CLI.", captured_output)
+        sent_messages = [call.args[0]['text'] for call in self.mock_send_to_websocket_server.call_args_list]
+        all_output = "\n".join(sent_messages)
+        self.assertIn("Coddy> exit", all_output)
+        self.assertIn("Exiting Coddy CLI. Goodbye!", all_output)
 
 
 if __name__ == '__main__':
@@ -220,4 +225,3 @@ if __name__ == '__main__':
     # 2. Navigate to your project's root (where Coddy/ is located)
     # 3. Run: `python -m unittest discover tests`
     unittest.main(argv=['first-arg-is-ignored'], exit=False)
-
