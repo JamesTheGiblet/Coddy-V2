@@ -70,8 +70,15 @@ async def write_file(file_path: str, content: str) -> None:
         IOError: For file I/O errors.
     """
     absolute_path = await safe_path(file_path)
-    # Ensure parent directory exists
-    os.makedirs(os.path.dirname(absolute_path), exist_ok=True)
+
+    dir_path = os.path.dirname(absolute_path)
+    if dir_path and not os.path.exists(dir_path):
+        try:
+            os.makedirs(dir_path, exist_ok=True)
+        except OSError as e:
+            print(f"Failed to create directory for path '{absolute_path}': {e}")
+            raise
+
     try:
         async with aiofiles.open(absolute_path, mode='w', encoding='utf-8') as f:
             await f.write(content)
@@ -79,6 +86,7 @@ async def write_file(file_path: str, content: str) -> None:
     except Exception as e:
         print(f"Error writing to file '{absolute_path}': {e}")
         raise
+
 
 async def list_files(directory_path: str = './') -> list[str]:
     """

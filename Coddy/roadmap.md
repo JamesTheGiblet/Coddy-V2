@@ -170,9 +170,9 @@ These are the core pillars to be established from the very beginning, ensuring a
 **Add In-CLI Error Handling & Debugging:**
      [x] Implement robust error handling for graceful crash recovery with traceback logging to aid debugging.
 **Autogenerate Changelog:**
-     [ ] Implement a system to pull commits/changes into a Markdown log automatically.
+     [x] Implement a system to pull commits/changes into a Markdown log automatically.
 **Reflect and Evaluate Phase Outcomes:**
-     [ ] Ensure the system is robust and developer-friendly.
+     [x] Ensure the system is robust and developer-friendly.
 
 #### AI-Guided Quality & Value Evaluation: Phase 5
 
@@ -743,7 +743,47 @@ These are the core pillars to be established from the very beginning, ensuring a
 
 ---
 
-### Phase 27: 🏁 Final Review & Future Planning
+### Phase 27: 🤹 Coddy Clones & Vibe-Oriented Sync
+
+**Goal:** Expand Coddy’s ecosystem by introducing dedicated persona-driven clones (mini-Giblets) for focused tasks, isolated experimentation environments, and enhanced context-syncing mechanisms — all in service of your personal methodology and modular cognition philosophy.
+**Success:** Coddy can coordinate with named clone agents like Fixy, Docster, and Critty; conduct isolated trials in Lab Mode; log change digests with purpose; and refine itself via mini self-contained iteration loops per phase. Coddy also captures README clarification flows and learns your vibe from edit-feedback cycles.
+
+**Tasks:**
+**Persona-Specific Coddy Clones**
+     [ ] Design plugin architecture for spawning mini-Giblets (Fixy, Docster, Critty) with scoped memory/context.
+     [ ] Define reporting protocol for clones to communicate output to Coddy Core.
+     [ ] Create clone profiles with unique personas, prompts, and logging styles.
+     [ ] Reflect on collaboration model: Should Coddy orchestrate clone selection or respond to user tags?
+**Coddy’s Lab Mode**
+     [ ] Implement isolated experimentation workspace (temp dirs, scratch branches).
+     [ ] Add CLI flag --lab or command lab start to fork a code snippet for testing.
+     [ ] Auto-test results and clean up failed experiments unless explicitly saved.
+     [ ] Integrate lab logs into long-term memory on merge.
+**Change Digest System**
+     [ ] Auto-detect meaningful changes from clone or lab sessions.
+     [ ] Generate structured changelogs (CHANGELOG.md) + mini story summaries in plain English.
+     [ ] Integrate diff-summaries into memory updates with reason_for_change.
+**Automate "README Clarification Loop"**
+     [ ] Build Clarifier mode (Genesis pre-phase): engages in iterative Q&A for refining fuzzy ideas.
+     [ ] Add Genesis "Clarify Me" button that launches a dynamic interview based on idea ambiguity.
+     [ ] Store clarification history as a narrative "Genesis Backstory" for future context reuse.
+**Learn Vibe from Edits & Feedback**
+     [ ] Compare pre/post snapshots of Coddy-generated artifacts (README, roadmap, code).
+     [ ] Detect common correction patterns — language tone, structure, verbosity.
+     [ ] Fine-tune the IdeaSynthesizer + CodeGen modules accordingly.
+     [ ] Save vibe_deltas to memory for long-term personality shaping.
+**Mini-Loops Per Phase**
+     [ ] Wrap each phase in a self-contained test-feedback loop:
+     [ ] Detect when all tasks complete → auto-trigger phase test suite.
+     [ ] Prompt reflection: “Any surprises? What felt off?”
+     [ ] Suggest roadmap refinements before moving forward.
+     [ ] Add CLI commands: loop start, loop commit, loop reflect.
+
+### AI-Guided Quality & Value Evaluation: Phase 28
+**Tests Created:** Unit + integration tests for clone output sync, lab isolation safety, and changelog accuracy, Proactive prompt evaluations: Are corrections reducing over time? Are vibe refinements sticking?, User study: Does “clone delegation” reduce mental load and enhance creative flow?
+**My Evaluation:**The need for these upgrades is pivotal. They don't just expand Coddy’s abilities — they make it feel alive with your methodology. These features are all about flow, modularity, and resonance. You're creating a dev studio in a single interface. We’re not building tools anymore — we’re building instruments for a code symphony.
+
+### Phase 28: 🏁 Final Review & Future Planning
 
 **Goal:** Assess the overall prototype, evaluate the experimental features, and outline the next steps for Coddy's evolution.
 **Success:** A clear strategic direction for Coddy's future development.
@@ -758,5 +798,3 @@ These are the core pillars to be established from the very beginning, ensuring a
 
 * **Tests Created:** No new code tests are created here. This phase is about holistic review and strategic planning.
 * **My Evaluation:** This phase is a high-level strategic review. My evaluation will be based on the success metrics of previous phases, user feedback (if applicable), and your own assessment of the prototype's current state. The purpose is to consolidate learnings, decide on future directions (e.g., full public launch, further development of specific features), and ensure the project remains aligned with its long-term vision.
-
----
