@@ -6,9 +6,9 @@ from typing import Dict
 
 # Define the path for genesis_log.json - should be in Coddy/genesis_log.json
 # Corrected path to place it inside the Coddy directory
-GENESIS_LOG_PATH = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "Coddy")), "genesis_log.json")
+GENESIS_LOG_PATH = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")), "genesis_log.json")
 # VIBE_DIR_PATH remains the same as it's where .vibe files are stored
-VIBE_DIR_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "Coddy", ".vibe")
+VIBE_DIR_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "..", ".vibe")
 
 
 def _update_genesis_log(file_entry: Dict[str, str]):
@@ -69,10 +69,11 @@ def create_structure(base_path, structure):
             else:
                 print(f"📄 File already exists, skipped: {path}")
 
+            # Always log Python files
             if name.endswith('.py'):
                 # Pass the path relative to the Coddy root for logging
                 # Example: Coddy/core/my_module.py -> core/my_module.py
-                relative_to_coddy_root = os.path.relpath(path, start=os.path.join(os.path.abspath(os.path.dirname(__file__)), "Coddy"))
+                relative_to_coddy_root = os.path.relpath(path, start=os.path.join(os.path.abspath(os.path.dirname(__file__)), ".."))
                 
                 file_entry = {
                     "location": os.path.dirname(relative_to_coddy_root).replace(os.sep, '/'), # Convert backslashes to forward
@@ -96,7 +97,6 @@ if __name__ == "__main__":
         },
         "vibe": { # This is the Python package for vibe-related modules
             "__init__.py": None, # Make it a Python package
-            # "vibe_file_manager.py": """...""", # Removed as per your request
         },
         "docs": {
             "banner.png": None,
@@ -111,9 +111,9 @@ if __name__ == "__main__":
             "roadmap_manager.py": None,
             "websocket_server.py": None,
             "utility_function.py": None,
-            "vibe_file_manager.py": None, # This was also duplicated, removing it here
+            "vibe_file_manager.py": None,
             "vibe_mode.py": None,
-            # "stub_auto_generator.py": """...""" # Removed as per your request
+            "git_analyzer.py": None, # New file for Phase 6
         },
         "ui": {
             "react-app": {
@@ -223,6 +223,7 @@ export default TabButton;
 }
 """,
             },
+            "cli.py": None, # Ensure cli.py is added to the structure
             ".gitkeep": None
         },
         "data": {
@@ -230,7 +231,8 @@ export default TabButton;
         },
         "tests": {
             "test_core_functions.py": None,
-            "test_cli.py": None,
+            "test_cli.py": None, # New file for Phase 6 tests
+            "test_git_analyzer.py": None,
             ".gitkeep": None
         },
         "backend": {
@@ -239,7 +241,8 @@ export default TabButton;
                 ".gitkeep": None
             },
             ".gitkeep": None
-        }
+        },
+        "roadmap.md": None
     }
 
     create_structure(coddy_path, coddy_structure)

@@ -22,6 +22,7 @@ try:
     from websocket_server import send_to_websocket_server # Assuming websocket_server.py is in core
     from vibe_mode import VibeModeEngine # Assuming vibe_mode.py is in core
     from logging_utility import log_info, log_warning, log_error, log_debug # Import the new logging utility
+    from git_analyzer import GitAnalyzer # Import GitAnalyzer for current branch display
 except ImportError as e:
     # This block handles critical import errors at startup
     print(f"FATAL ERROR: Could not import core modules required for CLI: {e}", file=sys.stderr)
@@ -32,6 +33,7 @@ except ImportError as e:
 memory_service: Optional[MemoryService] = None
 pattern_oracle: Optional[PatternOracle] = None
 vibe_engine: Optional[VibeModeEngine] = None # Global instance for VibeModeEngine
+git_analyzer: Optional[GitAnalyzer] = None # Global instance for GitAnalyzer
 
 current_user_id: str = "default_user" # Placeholder, will be replaced by actual user management
 current_session_id: str = str(uuid.uuid4()) # Unique ID for each CLI session
@@ -67,13 +69,14 @@ async def display_message(message: str, message_type: str = "info"):
 
 async def initialize_services():
     """Initializes global MemoryService, PatternOracle, and VibeModeEngine instances."""
-    global memory_service, pattern_oracle, vibe_engine
+    global memory_service, pattern_oracle, vibe_engine, git_analyzer
     await display_message("Initializing Coddy services...", "info")
     
     try:
         memory_service = MemoryService(session_id=current_session_id, user_id=current_user_id)
         pattern_oracle = PatternOracle(memory_service)
         vibe_engine = VibeModeEngine(memory_service, user_id=current_user_id) # Pass memory_service to VibeModeEngine
+        git_analyzer = GitAnalyzer() # Initialize GitAnalyzer
         await vibe_engine.initialize() # Initialize VibeModeEngine to load its state
         await display_message("Services initialized.", "info")
     except Exception as e:
@@ -132,6 +135,24 @@ async def load_session_context():
     else:
         await display_message("MemoryService not initialized, cannot load context.", "warning")
 
+async def _get_cli_prompt() -> str:
+    """
+    Dynamically generates the CLI prompt, including Git branch information.
+    This is a separate function to be called by start_cli.
+    """
+    branch_info = ""
+    if git_analyzer:
+        try:
+            current_branch = await git_analyzer.get_current_branch()
+            if current_branch and current_branch != "Not a Git repository":
+                branch_info = f"({current_branch})"
+        except Exception as e:
+            await log_warning(f"Could not get Git branch for prompt: {e}")
+            branch_info = "(git-error)"
+    
+    return f"Coddy{branch_info}{adaptive_prompt_suggestion} > "
+
+
 async def handle_instruction(instruction: str):
     """
     Parses a user instruction and attempts to execute a corresponding action.
@@ -166,7 +187,7 @@ async def handle_instruction(instruction: str):
                 await display_message(f"Invalid file path: {file_path}. Error: {e}", "error")
             except Exception as e:
                 await display_message(f"An unexpected error occurred while reading '{file_path}': {e}", "error")
-            await log_error(f"Failed to read file: {file_path}", exc_info=True)
+                await log_error(f"Failed to read file: {file_path}", exc_info=True)
 
 
         elif command_name == "write":
@@ -268,12 +289,12 @@ async def handle_instruction(instruction: str):
                             
                             cp = loaded_checkpoints[0]
                             if isinstance(cp.get('content'), dict) and cp['content'].get('type') == 'checkpoint':
-                                await display_message(f"  Name: {cp['content'].get('name')}", "response")
-                                await display_message(f"  Message: {cp['content'].get('message')}", "response")
-                                await display_message(f"  Timestamp: {cp.get('timestamp')}", "response")
-                                await display_message(f"  Session ID: {cp.get('session_id')}", "response")
+                                await display_message(f"   Name: {cp['content'].get('name')}", "response")
+                                await display_message(f"   Message: {cp['content'].get('message')}", "response")
+                                await display_message(f"   Timestamp: {cp.get('timestamp')}", "response")
+                                await display_message(f"   Session ID: {cp.get('session_id')}", "response")
                             else:
-                                await display_message(f"  Raw Memory Content: {cp.get('content')}", "response")
+                                await display_message(f"   Raw Memory Content: {cp.get('content')}", "response")
                             await display_message("---", "response")
                             command_logged = True
                         else:
@@ -304,7 +325,7 @@ async def handle_instruction(instruction: str):
                     if isinstance(content_display, dict):
                         content_display = str(content_display)
 
-                    await display_message(f"  - [{formatted_time}] {content_display[:80]}{'...' if len(content_display) > 80 else ''}", "response")
+                    await display_message(f"   - [{formatted_time}] {content_display[:80]}{'...' if len(content_display) > 80 else ''}", "response")
                 await display_message("--- End Context ---", "response")
                 command_logged = True
             else:
@@ -391,9 +412,86 @@ async def handle_instruction(instruction: str):
             else:
                 await display_message("Usage: memory show (more commands to come)", "warning")
 
+        elif command_name == "status":
+            if git_analyzer:
+                await display_message("Fetching Git status...", "info")
+                status = await git_analyzer.get_status()
+                await display_message(status if status else "Working directory is clean.", "response")
+                command_logged = True
+            else:
+                await display_message("GitAnalyzer not initialized.", "warning")
+        
+        elif command_name == "branch":
+            if git_analyzer:
+                await display_message("Fetching Git branches...", "info")
+                branches = await git_analyzer.get_branches()
+                if branches:
+                    for branch in branches:
+                        await display_message(f"- {branch}", "response")
+                else:
+                    await display_message("No branches found.", "info")
+                command_logged = True
+            else:
+                await display_message("GitAnalyzer not initialized.", "warning")
+
+        elif command_name == "log":
+            if git_analyzer:
+                await display_message("Fetching Git commit logs...", "info")
+                try:
+                    limit = int(args[0]) if args else 5
+                except ValueError:
+                    await display_message("Invalid limit. Please provide a number.", "warning")
+                    return
+                commits = await git_analyzer.get_commit_logs(limit=limit)
+                if commits:
+                    for commit in commits:
+                        await display_message(f"Hash: {commit['hash'][:7]} | Author: {commit['author']} | Message: {commit['message']}", "response")
+                else:
+                    await display_message("No commits found.", "info")
+                command_logged = True
+            else:
+                await display_message("GitAnalyzer not initialized.", "warning")
+
+        elif command_name == "summarize-repo":
+            if git_analyzer:
+                await display_message("Generating AI summary of repository activity...", "info")
+                try:
+                    num_commits = int(args[0]) if args else 5
+                except ValueError:
+                    await display_message("Invalid number of commits. Please provide a number.", "warning")
+                    return
+                summary = await git_analyzer.summarize_repo_activity(num_commits=num_commits)
+                await display_message("\n--- Repository Summary ---", "response")
+                await display_message(summary, "response")
+                command_logged = True
+            else:
+                await display_message("GitAnalyzer not initialized.", "warning")
+
+
+        elif command_name == "help":
+            await display_message("\n--- Coddy CLI Commands ---", "info")
+            await display_message("  read <file_path>                       : Read content of a file.", "info")
+            await display_message("  write <file_path> <content>          : Write content to a file.", "info")
+            await display_message("  list [directory_path]                : List files/directories in a path (defaults to current).", "info")
+            await display_message("  exec <command_string>                : Execute a shell command.", "info")
+            await display_message("  checkpoint save <name> [message]     : Save a named checkpoint of the current state.", "info")
+            await display_message("  checkpoint load <name>               : Load details of a named checkpoint.", "info")
+            await display_message("  show context                         : Display recent user context/memories.", "info")
+            await display_message("  vibe save <name>                     : Save the current 'vibe' (focus, context) to a local file.", "info")
+            await display_message("  vibe load <name>                     : Load a 'vibe' from a local file.", "info")
+            await display_message("  vibe list                            : List all local vibe snapshots.", "info")
+            await display_message("  memory show                          : Show recent raw memories.", "info")
+            await display_message("  status                               : Show current Git repository status.", "info")
+            await display_message("  branch                               : List all Git branches.", "info")
+            await display_message("  log [limit]                          : Show recent Git commit logs (default limit 5).", "info")
+            await display_message("  summarize-repo [num_commits]         : Get an AI-generated summary of recent repository activity.", "info")
+            await display_message("  exit | quit | bye                    : Exit Coddy.", "info")
+            await display_message("--------------------------\n", "info")
+            command_logged = True
+
 
         else:
-            await display_message("Unknown instruction. Supported commands: read <file>, write <file> <content>, list [directory], exec <command>, checkpoint save <name> [message], checkpoint load <name>, show context, vibe save <name>, vibe load <name>, vibe list, memory show, exit/quit.", "warning")
+            await display_message("Unknown instruction. Type 'help' for available commands.", "warning")
             await log_warning(f"Unknown instruction received: '{instruction}'")
 
     except ValueError as e: # Catch safe_path or other validation errors that might be raised by utility functions
@@ -427,7 +525,8 @@ async def start_cli():
 
     while True:
         try:
-            prompt_text = f"Coddy>{adaptive_prompt_suggestion} "
+            # Use the new _get_cli_prompt function
+            prompt_text = await _get_cli_prompt()
             # Use asyncio.to_thread for blocking input to prevent blocking the event loop
             instruction = await asyncio.to_thread(input, prompt_text)
             if not instruction.strip():

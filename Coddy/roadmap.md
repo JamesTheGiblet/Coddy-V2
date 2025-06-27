@@ -189,13 +189,13 @@ These are the core pillars to be established from the very beginning, ensuring a
 **Tasks:**
 
 **Implement Advanced Git Functions (Initial):**
-     [ ] Implement core Git analysis functions within the `GitAnalyzer` class, enabling status checks, branch listing, and retrieval of commit logs directly from the CLI. Ensure these operations are non-blocking / asynchronous where possible.
+     [x] Implement core Git analysis functions within the `GitAnalyzer` class, enabling status checks, branch listing, and retrieval of commit logs directly from the CLI. Ensure these operations are non-blocking / asynchronous where possible.
 **Create AI-Powered Repo Summarizer:**
-     [ ] Integrate the `IdeaSynthesizer` with `GitAnalyzer` to provide AI-generated summaries of recent repository activity, offering high-level insights into project progress.
+     [x] Integrate the `IdeaSynthesizer` with `GitAnalyzer` to provide AI-generated summaries of recent repository activity, offering high-level insights into project progress.
 **Implement Contextual Vibe Mode (Git Branch):**
-     [ ] Enhance the CLI prompt to dynamically display the current Git branch, providing immediate context when a manual focus is not active.
+     [x] Enhance the CLI prompt to dynamically display the current Git branch, providing immediate context when a manual focus is not active.
 **Reflect and Evaluate Phase Outcomes:**
-     [ ] Confirm Git integration provides useful context and summaries.
+     [x] Confirm Git integration provides useful context and summaries.
 
 #### AI-Guided Quality & Value Evaluation: Phase 6
 
