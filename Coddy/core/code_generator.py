@@ -61,6 +61,46 @@ class CodeGenerator:
             print(f"Error generating function: {e}")
             return f"# Failed to generate function '{function_name}': {e}"
 
+    async def refactor_code(self, original_code: str, instruction: str) -> str:
+        """
+        Refactors a block of Python code based on a given instruction.
+
+        Args:
+            original_code: The original Python code as a string.
+            instruction: The natural language instruction for refactoring.
+
+        Returns:
+            A string containing the refactored Python code.
+        """
+        print(f"Refactoring code with instruction: '{instruction}'...")
+
+        prompt = f"""
+        You are an expert Python programmer tasked with refactoring code.
+        Please refactor the following Python code based on the provided instruction.
+        Return only the complete, refactored code block. Do not add any explanations,
+        introductions, or markdown formatting like ```python.
+
+        Instruction:
+        ---
+        {instruction}
+        ---
+
+        Original Code:
+        ---
+        {original_code}
+        ---
+
+        Refactored Code:
+        """
+
+        try:
+            # Using a lower temperature for more predictable code generation
+            refactored_code = await self.llm_comm.summarize_text(prompt, temperature=0.1, top_p=0.9)
+            return refactored_code.strip()
+        except Exception as e:
+            print(f"Error refactoring code: {e}")
+            return f"# Failed to refactor code: {e}\n\n{original_code}"
+
 # Example Usage
 async def main_test_code_gen():
     print("\n--- Testing CodeGenerator ---")

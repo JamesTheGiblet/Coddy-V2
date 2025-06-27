@@ -93,27 +93,37 @@ if __name__ == "__main__":
     coddy_structure = {
         "genesis_log.json": None, # This file will be managed by the logging function
         ".vibe": { # This directory is for data files (.vibe snapshots)
-            ".gitkeep": None # Ensure .gitkeep is created
+            ".gitkeep": None, # Ensure .gitkeep is created
+            "vibe_file_manager.py": None
         },
         "vibe": { # This is the Python package for vibe-related modules
             "__init__.py": None, # Make it a Python package
         },
         "docs": {
             "banner.png": None,
+            "coddy_setup.py": None,
             "system-diagram.png": None,
             "walkthrough-script.md": None
         },
+        "models": {
+            "user_profile_model.py": None
+        },
         "core": {
+            "changelog_generator.py": None,
+            "code_generator.py": None,
+            "git_analyzer.py": None,
             "idea_synth.py": None,
             "logging_utility.py": None,
             "memory_service.py": None,
             "pattern_oracle.py": None,
             "roadmap_manager.py": None,
-            "websocket_server.py": None,
-            "utility_function.py": None,
+            "stub_auto_generator.py": None,
+            "ui_generator.py": None,
+            "utility_functions.py": None,
+            "utils.py": None,
             "vibe_file_manager.py": None,
             "vibe_mode.py": None,
-            "git_analyzer.py": None, 
+            "websocket_server.py": None,
         },
         "ui": {
             "react-app": {
@@ -222,6 +232,12 @@ root.render(
             "test_cli.py": None, 
             "test_git_analyzer.py": None,
             ".gitkeep": None
+        },
+        "plugins": {
+            ".gitkeep": None,
+            "refactor_plugin": {
+                "__init__.py": None
+            }
         },
         "backend": {
             "tests": {
