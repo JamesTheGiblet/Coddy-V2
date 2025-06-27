@@ -181,12 +181,15 @@ class VibeFileManager:
             "walkthrough-script.md": None
         },
         "core": {
-            "roadmap_manager.py": None,
-            "pattern_oracle.py": None,
             "idea_synth.py": None,
+            "logging_utility.py": None,
+            "memory_service.py": None,
+            "pattern_oracle.py": None,
+            "roadmap_manager.py": None,
             "websocket_server.py": None,
+            "utility_function.py": None,
+            "vibe_file_manager.py": None,
             "vibe_mode.py": None,
-            # ADDED: stub_auto_generator.py content
             "stub_auto_generator.py": """# Coddy/core/stub_auto_generator.py
 
 import os

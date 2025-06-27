@@ -5,6 +5,8 @@ import os
 import uuid # For generating session_id
 import datetime # For timestamps (though MemoryService handles this)
 from typing import Optional, List, Dict, Any # Added for type hints
+import shlex # For robust command parsing
+import traceback # For detailed exception information
 
 # Corrected sys.path.insert for importing modules from Coddy/core and Coddy/vibe
 # Add Coddy/core to the Python path
@@ -15,13 +17,15 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 try:
     from utility_functions import read_file, write_file, list_files, execute_command
-    from memory_service import MemoryService
-    from pattern_oracle import PatternOracle
-    from websocket_server import send_to_websocket_server # Import WebSocket sender
-    from vibe_mode import VibeModeEngine # Import VibeModeEngine from core
+    from memory_service import MemoryService # Assuming memory_service.py is in core
+    from pattern_oracle import PatternOracle # Assuming pattern_oracle.py is in core
+    from websocket_server import send_to_websocket_server # Assuming websocket_server.py is in core
+    from vibe_mode import VibeModeEngine # Assuming vibe_mode.py is in core
+    from logging_utility import log_info, log_warning, log_error, log_debug # Import the new logging utility
 except ImportError as e:
-    print(f"Error importing core modules: {e}")
-    print("Please ensure all required Python modules exist and are correctly configured in Coddy/core/ and Coddy/vibe/.")
+    # This block handles critical import errors at startup
+    print(f"FATAL ERROR: Could not import core modules required for CLI: {e}", file=sys.stderr)
+    traceback.print_exc(file=sys.stderr)
     sys.exit(1)
 
 # Global instances for services
@@ -34,44 +38,49 @@ current_session_id: str = str(uuid.uuid4()) # Unique ID for each CLI session
 adaptive_prompt_suggestion: str = "" # Stores dynamic prompt suggestions
 session_context_memories: List[Dict[str, Any]] = [] # Stores loaded context for the current user
 
-async def initialize_services():
-    """Initializes global MemoryService, PatternOracle, and VibeModeEngine instances."""
-    global memory_service, pattern_oracle, vibe_engine
-    print("Initializing Coddy services...")
-    
-    memory_service = MemoryService(session_id=current_session_id, user_id=current_user_id)
-    pattern_oracle = PatternOracle(memory_service)
-    vibe_engine = VibeModeEngine(memory_service, user_id=current_user_id) # Pass memory_service to VibeModeEngine
-    await vibe_engine.initialize() # Initialize VibeModeEngine to load its state
-
-    print("Services initialized.")
-
-async def log_and_stream_message(type: str, text: str, command_type: Optional[str] = None, raw_instruction: Optional[str] = None):
+async def display_message(message: str, message_type: str = "info"):
     """
-    Logs messages to MemoryService (if it's a command) and streams all messages
-    to the WebSocket server for real-time UI updates.
+    Standardized way to display messages to the user (via WebSocket/console) and log them.
+    Leverages the new logging_utility.
     """
-    # Log to MemoryService if it's a command
-    if command_type and raw_instruction:
-        if memory_service:
-            content = raw_instruction
-            tags = ["cli_command", command_type]
-            await memory_service.store_memory(content=content, tags=tags)
-            # Also update VibeModeEngine with activity (only for core CLI commands)
-            if vibe_engine and command_type in ["read", "write", "list", "exec"]:
-                await vibe_engine.update_activity(raw_instruction)
-        else:
-            print("Warning: MemoryService not initialized, command not logged.")
-
-    # Stream to WebSocket
     message_data = {
-        "type": type,
-        "text": text,
+        "type": message_type,
+        "text": message,
         "timestamp": datetime.datetime.now().isoformat(),
         "session_id": current_session_id,
         "user_id": current_user_id
     }
-    await send_to_websocket_server(message_data)
+    await send_to_websocket_server(message_data) # Always send to WebSocket for UI
+
+    # Log messages using the new logging utility
+    if message_type == "info":
+        await log_info(message)
+    elif message_type == "warning":
+        await log_warning(message)
+    elif message_type == "error":
+        # For errors, log the message. If an exception is being handled, exc_info=True
+        # will capture the current exception's traceback.
+        await log_error(message, exc_info=True if sys.exc_info()[0] is not None else False)
+    elif message_type == "debug":
+        await log_debug(message)
+
+
+async def initialize_services():
+    """Initializes global MemoryService, PatternOracle, and VibeModeEngine instances."""
+    global memory_service, pattern_oracle, vibe_engine
+    await display_message("Initializing Coddy services...", "info")
+    
+    try:
+        memory_service = MemoryService(session_id=current_session_id, user_id=current_user_id)
+        pattern_oracle = PatternOracle(memory_service)
+        vibe_engine = VibeModeEngine(memory_service, user_id=current_user_id) # Pass memory_service to VibeModeEngine
+        await vibe_engine.initialize() # Initialize VibeModeEngine to load its state
+        await display_message("Services initialized.", "info")
+    except Exception as e:
+        await display_message(f"Failed to initialize one or more Coddy services: {e}", "error")
+        await log_error(f"Service Initialization Error: {e}", exc_info=True)
+        # It's critical to halt if core services can't initialize
+        sys.exit(1)
 
 
 async def update_adaptive_prompt_suggestion():
@@ -86,15 +95,15 @@ async def update_adaptive_prompt_suggestion():
             if frequent_commands:
                 most_frequent_cmd = frequent_commands[0]['command']
                 # Avoid suggesting the current command being typed or generic ones
-                if most_frequent_cmd not in ["read", "write", "list", "exec", "checkpoint", "show", "vibe"]:
-                     adaptive_prompt_suggestion = f" (Try '{most_frequent_cmd}'?)"
+                if most_frequent_cmd not in ["read", "write", "list", "exec", "checkpoint", "show", "vibe", "memory"]:
+                    adaptive_prompt_suggestion = f" (Try '{most_frequent_cmd}'?)"
                 else:
                     adaptive_prompt_suggestion = ""
             else:
                 adaptive_prompt_suggestion = ""
         except Exception as e:
-            # Log error to WebSocket if possible
-            await log_and_stream_message("error", f"Error updating adaptive prompt suggestion: {e}")
+            await display_message(f"Error updating adaptive prompt suggestion: {e}", "error")
+            await log_error(f"Adaptive Prompt Error: {e}", exc_info=True)
             adaptive_prompt_suggestion = ""
     else:
         adaptive_prompt_suggestion = ""
@@ -106,7 +115,7 @@ async def load_session_context():
     """
     global session_context_memories
     if memory_service:
-        await log_and_stream_message("info", "Loading past context for user...")
+        await display_message("Loading past context for user...", "info")
         try:
             # Retrieve recent memories for the current user, NOT limited by current session_id
             session_context_memories = await memory_service.retrieve_context(
@@ -114,242 +123,351 @@ async def load_session_context():
                 query={"user_id": current_user_id} # Only filter by user_id for persistent context
             )
             if session_context_memories:
-                await log_and_stream_message("info", f"Loaded {len(session_context_memories)} recent memories for user '{current_user_id}'.")
+                await display_message(f"Loaded {len(session_context_memories)} recent memories for user '{current_user_id}'.", "info")
             else:
-                await log_and_stream_message("info", f"No past context found for user '{current_user_id}'.")
+                await display_message(f"No past context found for user '{current_user_id}'.", "info")
         except Exception as e:
-            await log_and_stream_message("error", f"Error loading user context: {e}")
+            await display_message(f"Error loading user context: {e}", "error")
+            await log_error(f"Context Loading Error: {e}", exc_info=True)
     else:
-        await log_and_stream_message("warning", "MemoryService not initialized, cannot load context.")
+        await display_message("MemoryService not initialized, cannot load context.", "warning")
 
 async def handle_instruction(instruction: str):
     """
     Parses a user instruction and attempts to execute a corresponding action.
+    Includes robust error handling and logging for each command block.
     """
     instruction = instruction.strip()
     if not instruction:
         return
 
-    # User input commands are echoed first to the UI
-    await log_and_stream_message("command", f"Coddy> {instruction}")
+    # User input command is echoed first to the UI/log
+    await display_message(f"Coddy> {instruction}", "info")
 
     command_logged = False
-    command_lower = instruction.lower()
+    command_parts = shlex.split(instruction) # Use shlex for robust parsing
+    command_name = command_parts[0].lower() if command_parts else ""
+    args = command_parts[1:]
 
-    if command_lower.startswith("read "):
-        file_path = instruction[5:].strip()
-        try:
-            content = await read_file(file_path)
-            await log_and_stream_message("response", f"Content of '{file_path}':\n---\n{content}\n---")
-            await log_and_stream_message("info", f"Successfully read '{file_path}'.")
-            await log_and_stream_message("status", f"Read '{file_path}'.", "read", instruction)
-            command_logged = True
-        except FileNotFoundError:
-            await log_and_stream_message("error", f"Error: File '{file_path}' not found.")
-        except Exception as e:
-            await log_and_stream_message("error", f"An error occurred while reading '{file_path}': {e}")
-    elif command_lower.startswith("write "):
-        parts = instruction[6:].strip().split(' ', 1) # Split only on first space
-        if len(parts) < 2:
-            await log_and_stream_message("error", "Usage: write <file_path> <content>")
-            return
-        file_path, content = parts[0], parts[1]
-        try:
-            await write_file(file_path, content)
-            await log_and_stream_message("success", f"Successfully wrote content to '{file_path}'.")
-            await log_and_stream_message("status", f"Wrote to '{file_path}'.", "write", instruction)
-            command_logged = True
-        except Exception as e:
-            await log_and_stream_message("error", f"An error occurred while writing to '{file_path}': {e}")
-    elif command_lower.startswith("list "):
-        directory_path = instruction[5:].strip() or './' # Default to current dir if no path given
-        try:
-            files = await list_files(directory_path)
-            await log_and_stream_message("response", f"Files and directories in '{directory_path}':")
-            for item in files:
-                await log_and_stream_message("response", f"- {item}")
-            await log_and_stream_message("info", f"Successfully listed '{directory_path}'.")
-            await log_and_stream_message("status", f"Listed '{directory_path}'.", "list", instruction)
-            command_logged = True
-        except FileNotFoundError:
-            await log_and_stream_message("error", f"Error: Directory '{directory_path}' not found.")
-        except Exception as e:
-            await log_and_stream_message("error", f"An error occurred while listing '{directory_path}': {e}")
-    elif command_lower.startswith("exec "):
-        command = instruction[5:].strip()
-        try:
-            return_code, stdout, stderr = await execute_command(command)
-            await log_and_stream_message("response", f"Command '{command}' executed.")
-            await log_and_stream_message("response", f"Return Code: {return_code}")
-            if stdout:
-                await log_and_stream_message("response", f"STDOUT:\n{stdout}")
-            if stderr:
-                await log_and_stream_message("response", f"STDERR:\n{stderr}")
-            if return_code == 0:
-                await log_and_stream_message("success", f"Command '{command}' executed successfully.")
-            else:
-                await log_and_stream_message("error", f"Command '{command}' failed with code {return_code}.")
-            await log_and_stream_message("status", f"Executed '{command}'.", "exec", instruction)
-            command_logged = True
-        except Exception as e:
-            await log_and_stream_message("error", f"An error occurred while executing command '{command}': {e}")
-    elif command_lower.startswith("checkpoint save "):
-        parts = instruction[len("checkpoint save "):].strip().split(' ', 1)
-        checkpoint_name = parts[0]
-        message = parts[1] if len(parts) > 1 else f"Checkpoint '{checkpoint_name}' saved."
-        if memory_service:
+    try:
+        if command_name == "read":
+            if not args:
+                await display_message("Usage: read <file_path>", "warning")
+                return
+            file_path = args[0]
             try:
-                await memory_service.store_memory(
-                    content={"type": "checkpoint", "name": checkpoint_name, "message": message},
-                    tags=["checkpoint", checkpoint_name]
-                )
-                await log_and_stream_message("success", f"Checkpoint '{checkpoint_name}' saved successfully.")
-                await load_session_context() # Refresh context in CLI's memory
+                content = await read_file(file_path)
+                await display_message(f"Content of '{file_path}':\n---\n{content}\n---", "response")
+                await display_message(f"Successfully read '{file_path}'.", "success")
+                command_logged = True
+            except FileNotFoundError:
+                await display_message(f"File '{file_path}' not found.", "error")
+            except ValueError as e: # Catch safe_path errors
+                await display_message(f"Invalid file path: {file_path}. Error: {e}", "error")
             except Exception as e:
-                await log_and_stream_message("error", f"Error saving checkpoint '{checkpoint_name}': {e}")
-        else:
-            await log_and_stream_message("warning", "MemoryService not initialized, cannot save checkpoint.")
-    elif command_lower.startswith("checkpoint load "):
-        checkpoint_name = instruction[len("checkpoint load "):].strip()
-        if memory_service:
-            await log_and_stream_message("info", f"Loading checkpoint '{checkpoint_name}'...")
+                await display_message(f"An unexpected error occurred while reading '{file_path}': {e}", "error")
+            await log_error(f"Failed to read file: {file_path}", exc_info=True)
+
+
+        elif command_name == "write":
+            if len(args) < 2:
+                await display_message("Usage: write <file_path> <content>", "warning")
+                return
+            file_path = args[0]
+            content = " ".join(args[1:]) # Join remaining args as content
             try:
-                loaded_checkpoints = await memory_service.load_memory(
-                    query={"tags": [checkpoint_name, "checkpoint"], "user_id": current_user_id}
-                )
-                if loaded_checkpoints:
-                    await log_and_stream_message("response", f"--- Checkpoint '{checkpoint_name}' Details ---")
-                    loaded_checkpoints.sort(key=lambda cp: cp.get('timestamp', ''), reverse=True)
-                    
-                    cp = loaded_checkpoints[0]
-                    if isinstance(cp.get('content'), dict) and cp['content'].get('type') == 'checkpoint':
-                        await log_and_stream_message("response", f"  Name: {cp['content'].get('name')}")
-                        await log_and_stream_message("response", f"  Message: {cp['content'].get('message')}")
-                        await log_and_stream_message("response", f"  Timestamp: {cp.get('timestamp')}")
-                        await log_and_stream_message("response", f"  Session ID: {cp.get('session_id')}")
-                    else:
-                        await log_and_stream_message("response", f"  Raw Memory Content: {cp.get('content')}")
-                    await log_and_stream_message("response", "---")
+                await write_file(file_path, content)
+                await display_message(f"Successfully wrote content to '{file_path}'.", "success")
+                command_logged = True
+            except ValueError as e: # Catch safe_path errors
+                await display_message(f"Invalid file path: {file_path}. Error: {e}", "error")
+            except Exception as e:
+                await display_message(f"An unexpected error occurred while writing to '{file_path}': {e}", "error")
+            await log_error(f"Failed to write file: {file_path}", exc_info=True)
+
+
+        elif command_name == "list":
+            directory_path = args[0] if args else './' # Default to current dir if no path given
+            try:
+                items = await list_files(directory_path)
+                item_list_str = "\n".join([f"- {item}" for item in items])
+                await display_message(f"Files and directories in '{directory_path}':\n{item_list_str}", "response")
+                await display_message(f"Successfully listed '{directory_path}'.", "success")
+                command_logged = True
+            except FileNotFoundError:
+                await display_message(f"Directory '{directory_path}' not found.", "error")
+            except ValueError as e: # Catch safe_path errors
+                await display_message(f"Invalid directory path: {directory_path}. Error: {e}", "error")
+            except Exception as e:
+                await display_message(f"An unexpected error occurred while listing '{directory_path}': {e}", "error")
+            await log_error(f"Failed to list directory: {directory_path}", exc_info=True)
+
+
+        elif command_name == "exec":
+            if not args:
+                await display_message("Usage: exec <command_string>", "warning")
+                return
+            full_command = shlex.join(args) # Reconstruct command with shlex for safety
+            try:
+                return_code, stdout, stderr = await execute_command(full_command)
+                await display_message(f"Command '{full_command}' executed.", "response")
+                if stdout:
+                    await display_message(f"STDOUT:\n{stdout}", "response")
+                if stderr:
+                    await display_message(f"STDERR:\n{stderr}", "error")
+                    # Log stderr to file without full traceback unless it's an actual Python exception
+                    await log_warning(f"Command '{full_command}' produced STDERR: {stderr}")
+                if return_code != 0:
+                    await display_message(f"Command '{full_command}' failed with exit code {return_code}.", "error")
+                    await log_error(f"Command '{full_command}' failed with exit code {return_code}.")
                 else:
-                    await log_and_stream_message("info", f"No checkpoint found with name '{checkpoint_name}' for user '{current_user_id}'.")
+                    await display_message(f"Command '{full_command}' executed successfully.", "success")
+                command_logged = True
             except Exception as e:
-                await log_and_stream_message("error", f"Error loading checkpoint '{checkpoint_name}': {e}")
-        else:
-            await log_and_stream_message("warning", "MemoryService not initialized, cannot load checkpoint.")
-    elif command_lower == "show context":
-        if session_context_memories:
-            await log_and_stream_message("response", "\n--- Current User Context (Recent Memories) ---")
-            for mem in session_context_memories:
-                timestamp = mem.get('timestamp')
-                formatted_time = ""
-                if timestamp:
+                await display_message(f"Error executing command '{full_command}': {e}", "error")
+                await log_error(f"Exception during command execution: {full_command}", exc_info=True)
+
+
+        elif command_name == "exit" or command_name == "quit" or command_name == "bye":
+            await display_message("Exiting Coddy CLI. Goodbye!", "info")
+            sys.exit(0)
+
+        # --- Placeholder/Existing Command Handlers ---
+        elif command_name == "checkpoint":
+            if len(args) >= 2 and args[0].lower() == "save":
+                checkpoint_name = args[1]
+                message = " ".join(args[2:]) if len(args) > 2 else f"Checkpoint '{checkpoint_name}' saved."
+                if memory_service:
                     try:
-                        dt_object = datetime.datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-                        formatted_time = dt_object.strftime("%Y-%m-%d %H:%M:%S")
-                    except ValueError:
-                        formatted_time = timestamp.split('T')[0]
-
-                content_display = mem.get('content', 'N/A')
-                if isinstance(content_display, dict):
-                    content_display = str(content_display)
-
-                await log_and_stream_message("response", f"  - [{formatted_time}] {content_display[:80]}{'...' if len(content_display) > 80 else ''}")
-            await log_and_stream_message("response", "--- End Context ---")
-        else:
-            await log_and_stream_message("info", f"No recent context available for user '{current_user_id}'. Perform some commands to build context across sessions.")
-    elif command_lower.startswith("vibe save "):
-        parts = instruction[len("vibe save "):].strip().split(' ', 1)
-        snapshot_name = parts[0]
-        current_todos_for_snapshot = [] # Placeholder for actual TODOs
-        if vibe_engine:
-            try:
-                # Include current vibe state for the snapshot
-                # We need to explicitly pass the current vibe data and todos
-                current_vibe_data = vibe_engine.get_current_vibe()
-                current_vibe_data["todos"] = current_todos_for_snapshot # Add todos to the vibe data
-                success = await vibe_engine.save_vibe_to_file(snapshot_name, current_todos=current_todos_for_snapshot) # Passes todos again, but this is handled by save_vibe_to_file
-                if success:
-                    await log_and_stream_message("success", f"Vibe snapshot '{snapshot_name}' saved to local file.")
+                        await memory_service.store_memory(
+                            content={"type": "checkpoint", "name": checkpoint_name, "message": message},
+                            tags=["checkpoint", checkpoint_name]
+                        )
+                        await display_message(f"Checkpoint '{checkpoint_name}' saved successfully.", "success")
+                        await load_session_context() # Refresh context in CLI's memory
+                        command_logged = True
+                    except Exception as e:
+                        await display_message(f"Error saving checkpoint '{checkpoint_name}': {e}", "error")
+                        await log_error(f"Checkpoint save error: {e}", exc_info=True)
                 else:
-                    await log_and_stream_message("error", f"Failed to save vibe snapshot '{snapshot_name}' to local file.")
-            except Exception as e:
-                await log_and_stream_message("error", f"Error saving vibe snapshot '{snapshot_name}': {e}")
-        else:
-            await log_and_stream_message("warning", "VibeModeEngine not initialized, cannot save vibe snapshot.")
-    elif command_lower.startswith("vibe load "):
-        snapshot_name = instruction[len("vibe load "):].strip()
-        if vibe_engine:
-            try:
-                success = await vibe_engine.load_vibe_from_file(snapshot_name)
-                if success:
-                    await log_and_stream_message("success", f"Vibe snapshot '{snapshot_name}' loaded from local file.")
-                    await load_session_context() # Refresh context after loading a vibe from file
+                    await display_message("MemoryService not initialized, cannot save checkpoint.", "warning")
+            elif len(args) >= 1 and args[0].lower() == "load":
+                checkpoint_name = args[1] if len(args) > 1 else ""
+                if not checkpoint_name:
+                    await display_message("Usage: checkpoint load <name>", "warning")
+                    return
+                if memory_service:
+                    await display_message(f"Loading checkpoint '{checkpoint_name}'...", "info")
+                    try:
+                        loaded_checkpoints = await memory_service.load_memory(
+                            query={"tags": [checkpoint_name, "checkpoint"], "user_id": current_user_id}
+                        )
+                        if loaded_checkpoints:
+                            await display_message(f"--- Checkpoint '{checkpoint_name}' Details ---", "response")
+                            loaded_checkpoints.sort(key=lambda cp: cp.get('timestamp', ''), reverse=True)
+                            
+                            cp = loaded_checkpoints[0]
+                            if isinstance(cp.get('content'), dict) and cp['content'].get('type') == 'checkpoint':
+                                await display_message(f"  Name: {cp['content'].get('name')}", "response")
+                                await display_message(f"  Message: {cp['content'].get('message')}", "response")
+                                await display_message(f"  Timestamp: {cp.get('timestamp')}", "response")
+                                await display_message(f"  Session ID: {cp.get('session_id')}", "response")
+                            else:
+                                await display_message(f"  Raw Memory Content: {cp.get('content')}", "response")
+                            await display_message("---", "response")
+                            command_logged = True
+                        else:
+                            await display_message(f"No checkpoint found with name '{checkpoint_name}' for user '{current_user_id}'.", "info")
+                    except Exception as e:
+                        await display_message(f"Error loading checkpoint '{checkpoint_name}': {e}", "error")
+                        await log_error(f"Checkpoint load error: {e}", exc_info=True)
                 else:
-                    await log_and_stream_message("error", f"Failed to load vibe snapshot '{snapshot_name}' from local file.")
-            except Exception as e:
-                await log_and_stream_message("error", f"Error loading vibe snapshot '{snapshot_name}': {e}")
-        else:
-            await log_and_stream_message("warning", "VibeModeEngine not initialized, cannot load vibe snapshot.")
-    elif command_lower == "vibe list":
-        if vibe_engine:
-            try:
-                snapshots = await vibe_engine.list_local_vibe_snapshots()
-                if snapshots:
-                    await log_and_stream_message("response", "--- Available Vibe Snapshots ---")
-                    for s_name in snapshots:
-                        await log_and_stream_message("response", f"- {s_name}")
-                    await log_and_stream_message("response", "---")
-                else:
-                    await log_and_stream_message("info", "No local vibe snapshots found.")
-            except Exception as e:
-                await log_and_stream_message("error", f"Error listing vibe snapshots: {e}")
-        else:
-            await log_and_stream_message("warning", "VibeModeEngine not initialized, cannot list vibe snapshots.")
-    elif command_lower in ["exit", "quit", "bye"]:
-        await log_and_stream_message("info", "Exiting Coddy CLI. Goodbye!")
-        sys.exit(0)
-    else:
-        await log_and_stream_message("error", "Unknown instruction. Supported commands: read <file>, write <file> <content>, list [directory], exec <command>, checkpoint save <name> [message], checkpoint load <name>, show context, vibe save <name>, vibe load <name>, vibe list, exit/quit.")
+                    await display_message("MemoryService not initialized, cannot load checkpoint.", "warning")
+            else:
+                await display_message("Usage: checkpoint save <name> [message] or checkpoint load <name>", "warning")
 
-    if command_logged:
-        await update_adaptive_prompt_suggestion()
+
+        elif command_name == "show" and len(args) == 1 and args[0].lower() == "context":
+            if session_context_memories:
+                await display_message("\n--- Current User Context (Recent Memories) ---", "response")
+                for mem in session_context_memories:
+                    timestamp = mem.get('timestamp')
+                    formatted_time = ""
+                    if timestamp:
+                        try:
+                            dt_object = datetime.datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                            formatted_time = dt_object.strftime("%Y-%m-%d %H:%M:%S")
+                        except ValueError:
+                            formatted_time = timestamp.split('T')[0]
+
+                    content_display = mem.get('content', 'N/A')
+                    if isinstance(content_display, dict):
+                        content_display = str(content_display)
+
+                    await display_message(f"  - [{formatted_time}] {content_display[:80]}{'...' if len(content_display) > 80 else ''}", "response")
+                await display_message("--- End Context ---", "response")
+                command_logged = True
+            else:
+                await display_message(f"No recent context available for user '{current_user_id}'. Perform some commands to build context across sessions.", "info")
+
+
+        elif command_name == "vibe":
+            if len(args) >= 2 and args[0].lower() == "save":
+                snapshot_name = args[1]
+                # Placeholder for actual TODOs and vibe data extraction
+                current_todos_for_snapshot = [] 
+                if vibe_engine:
+                    try:
+                        current_vibe_data = vibe_engine.get_current_vibe() # Get latest vibe state
+                        current_vibe_data["todos"] = current_todos_for_snapshot # Add todos placeholder
+                        success = await vibe_engine.save_vibe_to_file(snapshot_name, current_vibe_data)
+                        if success:
+                            await display_message(f"Vibe snapshot '{snapshot_name}' saved to local file.", "success")
+                            command_logged = True
+                        else:
+                            await display_message(f"Failed to save vibe snapshot '{snapshot_name}' to local file.", "error")
+                    except Exception as e:
+                        await display_message(f"Error saving vibe snapshot '{snapshot_name}': {e}", "error")
+                        await log_error(f"Vibe save error: {e}", exc_info=True)
+                else:
+                    await display_message("VibeModeEngine not initialized, cannot save vibe snapshot.", "warning")
+            elif len(args) >= 2 and args[0].lower() == "load":
+                snapshot_name = args[1]
+                if vibe_engine:
+                    try:
+                        success = await vibe_engine.load_vibe_from_file(snapshot_name)
+                        if success:
+                            await display_message(f"Vibe snapshot '{snapshot_name}' loaded from local file.", "success")
+                            await load_session_context() # Refresh context after loading a vibe from file
+                            command_logged = True
+                        else:
+                            await display_message(f"Failed to load vibe snapshot '{snapshot_name}' from local file.", "error")
+                    except FileNotFoundError:
+                        await display_message(f"Vibe snapshot '{snapshot_name}' not found.", "error")
+                    except Exception as e:
+                        await display_message(f"Error loading vibe snapshot '{snapshot_name}': {e}", "error")
+                        await log_error(f"Vibe load error: {e}", exc_info=True)
+                else:
+                    await display_message("VibeModeEngine not initialized, cannot load vibe snapshot.", "warning")
+            elif len(args) == 1 and args[0].lower() == "list":
+                if vibe_engine:
+                    try:
+                        snapshots = await vibe_engine.list_local_vibe_snapshots()
+                        if snapshots:
+                            await display_message("--- Available Vibe Snapshots ---", "response")
+                            for s_name in snapshots:
+                                await display_message(f"- {s_name}", "response")
+                            await display_message("---", "response")
+                            command_logged = True
+                        else:
+                            await display_message("No local vibe snapshots found.", "info")
+                    except Exception as e:
+                        await display_message(f"Error listing vibe snapshots: {e}", "error")
+                        await log_error(f"Vibe list error: {e}", exc_info=True)
+                else:
+                    await display_message("VibeModeEngine not initialized, cannot list vibe snapshots.", "warning")
+            else:
+                await display_message("Usage: vibe save <name> | vibe load <name> | vibe list", "warning")
+
+
+        elif command_name == "memory":
+            if len(args) >= 1 and args[0].lower() == "show":
+                # Assuming 'memory show' might display recent raw memories or summary
+                if memory_service:
+                    await display_message("Showing recent raw memories (placeholder)...", "info")
+                    try:
+                        recent_mems = await memory_service.retrieve_context(num_recent=5)
+                        if recent_mems:
+                            for mem in recent_mems:
+                                await display_message(f"- {mem.get('content', 'N/A')}", "response")
+                        else:
+                            await display_message("No recent memories to show.", "info")
+                        command_logged = True
+                    except Exception as e:
+                        await display_message(f"Error showing memories: {e}", "error")
+                        await log_error(f"Memory show error: {e}", exc_info=True)
+                else:
+                    await display_message("MemoryService not initialized, cannot show memories.", "warning")
+            else:
+                await display_message("Usage: memory show (more commands to come)", "warning")
+
+
+        else:
+            await display_message("Unknown instruction. Supported commands: read <file>, write <file> <content>, list [directory], exec <command>, checkpoint save <name> [message], checkpoint load <name>, show context, vibe save <name>, vibe load <name>, vibe list, memory show, exit/quit.", "warning")
+            await log_warning(f"Unknown instruction received: '{instruction}'")
+
+    except ValueError as e: # Catch safe_path or other validation errors that might be raised by utility functions
+        await display_message(f"Invalid input or operation: {e}", "error")
+        await log_error(f"Input validation error for instruction '{instruction}': {e}", exc_info=True)
+    except Exception as e:
+        # Generic catch-all for any unhandled exceptions during instruction processing
+        await display_message(f"An unexpected error occurred while processing instruction: {e}", "error")
+        await log_error(f"Unhandled exception processing instruction '{instruction}': {e}", exc_info=True)
+
+    finally:
+        # Always update adaptive prompt suggestion after a command is processed (if it was valid)
+        if command_logged:
+            await update_adaptive_prompt_suggestion()
 
 
 async def start_cli():
     """
-    Starts the main command-line interface loop for Coddy.
+    Main loop for the Coddy CLI.
+    Initializes services and handles user input with comprehensive error handling.
     """
-    print("Welcome to Coddy V2 CLI (Phase 4 Prototype - Vibe Tools)!")
-    print(f"User ID: {current_user_id}, Session ID: {current_session_id}")
-    print("Type 'exit' or 'quit' to end the session.")
-    print("Supported commands: read <file>, write <file> <content>, list [directory], exec <command>, checkpoint save <name> [message], checkpoint load <name>, show context, vibe save <name>, vibe load <name>, vibe list.")
-
-    await initialize_services() # Initialize services at CLI startup
+    # Attempt to initialize services. If this fails, the app will exit.
+    await initialize_services() 
     await load_session_context() # Load past context for this user
     await update_adaptive_prompt_suggestion() # Initial suggestion
+
+    await display_message("🚀 Coddy CLI (v2.0.0) - Your Async Dev Companion, Reimagined.", "info")
+    await display_message("Type 'exit' to quit.", "info")
+    await display_message(f"User ID: {current_user_id}, Session ID: {current_session_id}", "info")
+
 
     while True:
         try:
             prompt_text = f"Coddy>{adaptive_prompt_suggestion} "
             # Use asyncio.to_thread for blocking input to prevent blocking the event loop
             instruction = await asyncio.to_thread(input, prompt_text)
+            if not instruction.strip():
+                continue
             await handle_instruction(instruction)
         except EOFError: # Handles Ctrl+D
-            await log_and_stream_message("info", "\nExiting Coddy CLI. Goodbye!")
-            break
+            await display_message("\nReceived EOF. Exiting Coddy CLI. Goodbye!", "info")
+            sys.exit(0)
         except KeyboardInterrupt: # Handles Ctrl+C
-            await log_and_stream_message("info", "\nOperation interrupted. Type 'exit' to quit.")
+            await display_message("\nOperation interrupted. Exiting Coddy CLI. Goodbye!", "info")
+            sys.exit(0) # Exit gracefully on Ctrl+C
         except Exception as e:
-            await log_and_stream_message("critical", f"An unexpected error occurred in CLI loop: {e}")
+            # This catches errors in the input() call or if asyncio.to_thread fails
+            await display_message(f"An unexpected error occurred in the CLI loop: {e}", "error")
+            await log_error(f"Unhandled error in CLI input loop: {e}", exc_info=True)
+            # If an error occurs here, it's severe enough to exit
+            sys.exit(1)
+
 
 if __name__ == "__main__":
-    # To run this CLI: python Coddy/ui/cli.py
-    # Ensure your Node.js backend is running (npm start in Coddy/backend).
-    # Ensure WebSocket server is running (python Coddy/core/websocket_server.py in a separate terminal).
-    # Ensure `aiohttp` and `websockets` are installed: `pip install aiohttp websockets`.
-    # Ensure `memory_service.py`, `pattern_oracle.py`, `websocket_server.py`, `vibe_mode.py` are in Coddy/core.
-    # Ensure `vibe_file_manager.py` is in Coddy/vibe (now a package).
+    # Ensure PROJECT_ROOT is correctly set for standalone execution/testing of cli.py
+    # This might be redundant if cli.py is always run as part of a larger Coddy system init.
+    # However, for direct testing, it's safer.
+    # Assuming cli.py is in Coddy/ui/, then '..' to Coddy/, and then parent dir is project root
+    # Corrected: PROJECT_ROOT defined in utility_functions.py is the Coddy/ directory.
+    # So when cli.py imports utility_functions, it gets the correct PROJECT_ROOT.
+    # No need to redefine it here.
+    
+    # Final catch-all for any unhandled exceptions that escape the CLI loop,
+    # specifically for the initial asyncio.run(start_cli()) call.
     try:
         asyncio.run(start_cli())
     except Exception as e:
-        print(f"CLI startup failed: {e}")
+        print(f"\nFATAL ERROR: Coddy CLI terminated unexpectedly: {e}", file=sys.stderr)
+        # Log the critical error with full traceback
+        # We need to run this in a new event loop if the previous one is closed
+        try:
+            asyncio.run(log_error(f"FATAL CLI termination: {e}", exc_info=True))
+        except RuntimeError: # Catch if event loop is already closed/running
+            import logging
+            logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
+            logging.error(f"FATAL CLI termination (RuntimeError during async logging): {e}", exc_info=True)
+        sys.exit(1)

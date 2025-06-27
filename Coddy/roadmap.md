@@ -166,9 +166,9 @@ These are the core pillars to be established from the very beginning, ensuring a
 **Tasks:**
 
 **Add Unit Tests:**
-     [ ] `tests/test_all.py`: Create a comprehensive test suite that covers each core module and integrates all previously developed tests.
+     [x] `tests/test_all.py`: Create a comprehensive test suite that covers each core module and integrates all previously developed tests.
 **Add In-CLI Error Handling & Debugging:**
-     [ ] Implement robust error handling for graceful crash recovery with traceback logging to aid debugging.
+     [x] Implement robust error handling for graceful crash recovery with traceback logging to aid debugging.
 **Autogenerate Changelog:**
      [ ] Implement a system to pull commits/changes into a Markdown log automatically.
 **Reflect and Evaluate Phase Outcomes:**
