@@ -229,13 +229,20 @@ root.render(
         },
         "tests": {
             "test_core_functions.py": None,
-            "test_cli.py": None, 
+            "test_cli.py": None,
             "test_git_analyzer.py": None,
+            "test_code_generator.py": None,
+            "test_plugin_manager.py": None,
+            "test_refactor_plugin.py": None,
+            "test_ollama_llm_plugin.py": None,
             ".gitkeep": None
         },
         "plugins": {
             ".gitkeep": None,
             "refactor_plugin": {
+                "__init__.py": None
+            },
+            "ollama_llm_plugin": {
                 "__init__.py": None
             }
         },

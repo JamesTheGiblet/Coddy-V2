@@ -1,27 +1,26 @@
 # Coddy/core/idea_synth.py
 
 import asyncio
-import sys
 import os
-import json
-import aiohttp
 import re
 from typing import List, Dict, Any, Optional
-import dotenv
+
+from core.llm_provider import LLMProvider, get_llm_provider
+from core.logging_utility import log_info, log_error, logger # Import logger for sync use
 
 # Load environment variables from .env file
-dotenv.load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
+# dotenv.load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env')) # Handled by main entry point
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
-
-API_KEY = os.environ.get('GEMINI_API_KEY', "")
-
-GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+# No longer needed as LLMProvider handles API key management
+# API_KEY = os.environ.get('GEMINI_API_KEY', "")
+# GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
 
 class IdeaSynthesizer:
     """
     Generates creative ideas and solutions using a large language model (LLM).
-    Supports standard and 'weird' (creative/chaotic) modes, and can incorporate constraints.
+    Supports standard and 'weird' (creative/chaotic) modes, and can incorporate constraints.#
+    Also provides a general text summarization/generation capability.
+
     """
 
     def __init__(self, user_id: str = "default_user_synth"):
@@ -31,57 +30,20 @@ class IdeaSynthesizer:
         Args:
             user_id: An identifier for the current user, useful for logging or personalization.
         """
-        self.user_id = user_id
-
-    async def _generate_text_from_llm(self, prompt: str, temperature: float = 0.7, top_p: float = 0.95) -> str:
-        """
-        Makes an asynchronous call to the Gemini API to generate text.
-
-        Args:
-            prompt: The text prompt to send to the LLM.
-            temperature: Controls the randomness of the output. Higher values mean more random.
-            top_p: The nucleus sampling parameter.
-
-        Returns:
-            The generated text from the LLM.
-
-        Raises:
-            aiohttp.ClientError: For network or HTTP-related errors.
-            ValueError: If the LLM response is empty or malformed.
-        """
-        headers = {'Content-Type': 'application/json'}
-        payload = {
-            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "temperature": temperature,
-                "topP": top_p,
-                "responseMimeType": "text/plain"
-            }
-        }
-        
-        if not API_KEY:
-            raise ValueError("GEMINI_API_KEY environment variable is not set. Please set it in your .env file.")
-
+        self.user_id: str = user_id
+        # TODO: Load provider and config from user profile.
+        # For now, default to Gemini for backward compatibility.
+        # This can be made configurable via user profile in Phase 15/19
+        provider_name: str = "gemini" 
+        provider_config: Dict[str, Any] = {} # Empty config uses env vars for Gemini
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(f"{GEMINI_API_URL}?key={API_KEY}", headers=headers, json=payload) as response:
-                    response.raise_for_status()
-                    result = await response.json()
+            self.llm_provider: LLMProvider = get_llm_provider(provider_name, provider_config)
+        except ValueError as e:
+            # Use the synchronous logger here as __init__ cannot be async
+            logger.error(f"Failed to initialize LLM provider: {e}. This may be due to a missing API key.")
+            # Depending on desired behavior, could raise, or use a dummy provider
+            raise
 
-                    if result.get("candidates") and result["candidates"][0].get("content") and result["candidates"][0]["content"].get("parts"):
-                        return result["candidates"][0]["content"]["parts"][0]["text"]
-                    else:
-                        print(f"LLM response empty or unexpected structure: {result}")
-                        raise ValueError("Failed to get valid text from LLM response.")
-        except aiohttp.ClientError as e:
-            print(f"Network error during LLM call: {e}")
-            raise
-        except json.JSONDecodeError as e:
-            print(f"Error decoding LLM JSON response: {e}")
-            raise
-        except Exception as e:
-            print(f"An unexpected error occurred during LLM text generation: {e}")
-            raise
 
     async def generate_idea(
         self,
@@ -102,7 +64,7 @@ class IdeaSynthesizer:
         Returns:
             A list of generated ideas/solutions.
         """
-        print(f"Generating idea for: '{base_idea}' (Weird Mode: {weird_mode}, Constraints: {constraints})...")
+        await log_info(f"Generating idea for: '{base_idea}' (Weird Mode: {weird_mode}, Constraints: {constraints})...")
 
         prompt_template = "Generate an idea for: '{base_idea}'.\n"
         if constraints:
@@ -127,7 +89,7 @@ class IdeaSynthesizer:
 
         generated_ideas = []
         try:
-            raw_response = await self._generate_text_from_llm(final_prompt, temperature, top_p)
+            raw_response = await self.llm_provider.generate_text(final_prompt, temperature=temperature, top_p=top_p)
             
             if num_solutions > 1:
                 # Use re.findall to capture content of each numbered list item
@@ -147,14 +109,14 @@ class IdeaSynthesizer:
             else:
                 generated_ideas.append(raw_response.strip())
         except Exception as e:
-            print(f"Error generating idea: {e}")
+            await log_error(f"Error generating idea: {e}", exc_info=True)
             generated_ideas.append(f"Failed to generate idea: {e}")
 
         # Deduplicate and limit to requested number if generation created more
         if num_solutions > 1:
             generated_ideas = list(dict.fromkeys(generated_ideas))[:num_solutions]
         
-        print("Idea generation complete.")
+        await log_info("Idea generation complete.")
         return generated_ideas
 
     async def summarize_text(self, prompt: str, temperature: float = 0.5, top_p: float = 0.95) -> str:
@@ -169,28 +131,32 @@ class IdeaSynthesizer:
         Returns:
             The generated summary text from the LLM.
         """
-        print(f"Generating summary for prompt: '{prompt[:70]}...'")
-        summary = await self._generate_text_from_llm(prompt, temperature=temperature, top_p=top_p)
+        await log_info(f"Generating summary for prompt: '{prompt[:70]}...'")
+        summary = await self.llm_provider.generate_text(prompt, temperature=temperature, top_p=top_p)
         return summary
 
 
 # Example Usage (for testing the IdeaSynthesizer)
 async def main_test_idea_synth():
-    print("\n--- Testing IdeaSynthesizer ---")
+    await log_info("\n--- Testing IdeaSynthesizer ---")
 
-    idea_synth = IdeaSynthesizer(user_id="test_user_synth")
+    try:
+        idea_synth = IdeaSynthesizer(user_id="test_user_synth")
+    except ValueError as e:
+        await log_error(f"Could not start IdeaSynthesizer test: {e}")
+        return
 
     # Test Standard Mode
-    print("\n--- Standard Idea Generation (Single) ---")
+    await log_info("\n--- Standard Idea Generation (Single) ---")
     standard_ideas = await idea_synth.generate_idea(
         base_idea="a new note-taking app",
         num_solutions=1
     )
     for idea in standard_ideas:
-        print(f"Standard Idea: {idea}")
+
 
     # Test Weird Mode (Single)
-    print("\n--- Weird Mode Idea Generation (Single) ---")
+        print("\n--- Weird Mode Idea Generation (Single) ---")
     weird_ideas = await idea_synth.generate_idea(
         base_idea="a new note-taking app",
         weird_mode=True,

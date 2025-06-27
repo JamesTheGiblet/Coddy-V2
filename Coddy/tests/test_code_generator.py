@@ -2,7 +2,7 @@
 import unittest
 import asyncio
 from unittest.mock import patch, AsyncMock
-
+from core.llm_provider import LLMProvider # Import for type hinting the mock
 from core.code_generator import CodeGenerator
 
 class TestCodeGenerator(unittest.TestCase):
