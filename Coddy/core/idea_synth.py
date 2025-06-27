@@ -1,4 +1,5 @@
 # Coddy/core/idea_synth.py
+
 import asyncio
 import sys
 import os

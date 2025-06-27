@@ -1,3 +1,5 @@
+#core/git_analyzer.py
+
 import asyncio
 import subprocess
 from typing import Optional, List, Dict
