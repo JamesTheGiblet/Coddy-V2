@@ -96,6 +96,11 @@ class CodeGenerator:
         try:
             # Using a lower temperature for more predictable code generation
             refactored_code = await self.llm_comm.summarize_text(prompt, temperature=0.1, top_p=0.9)
+            # Clean up the response to ensure it's just the code block
+            if "```python" in refactored_code:
+                refactored_code = refactored_code.split("```python")[1].split("```")[0]
+            elif "```" in refactored_code:
+                refactored_code = refactored_code.split("```")[1].split("```")[0]
             return refactored_code.strip()
         except Exception as e:
             print(f"Error refactoring code: {e}")
