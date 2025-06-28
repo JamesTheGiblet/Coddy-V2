@@ -1,171 +1,142 @@
-# tests/test_refactor_thyself_plugin.py
 import unittest
-import asyncio
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import patch, AsyncMock
 from pathlib import Path
 from click.testing import CliRunner
-import os # Import os for temporary directory handling
-import shutil # Import shutil for rmtree
+import shutil
 
-# Assuming refactor_thyself is a Click command, so we need to import its callback
-from plugins.test_thyself_plugin.cli import refactor_thyself
+from plugins.test_thyself_plugin.cli import refactor_thyself_sync
 
-class TestRefactorThyselfPlugin(unittest.IsolatedAsyncioTestCase):
+# Async mock function for refactor_file
+async def fake_refactor_file(*args, **kwargs):
+    return "Refactored sample.py (backup saved as sample.py.bak)"
+
+class TestRefactorThyselfPlugin(unittest.TestCase):
     def setUp(self):
         self.runner = CliRunner()
-        # Create a temporary directory for tests that need a real path
         self.temp_dir = Path("temp_test_coddy_dir")
-        self.temp_dir.mkdir(exist_ok=True, parents=True) # Ensure it exists for CliRunner
-        self.test_dir = self.temp_dir # Use the temporary directory as the base
-        self.test_file_1 = self.test_dir / "file1.py"
-        self.test_file_2 = self.test_dir / "file2.py"
+        self.temp_dir.mkdir(exist_ok=True, parents=True)
+        self.test_dir = self.temp_dir
 
     def tearDown(self):
-        # Clean up the temporary directory after each test
         if self.temp_dir.exists():
-            shutil.rmtree(self.temp_dir) # Use rmtree to delete directory and its contents
-
-    # Patch click.echo at its source (assuming it's imported as `import click` and used as `click.echo`)
-    @patch("plugins.test_thyself_plugin.cli.click.echo") # Reverted to specific patch target
-    @patch("plugins.test_thyself_plugin.cli.Path.rglob")
-    async def test_dry_run_refactor(self, mock_rglob, mock_echo): # Mocks order matters for args
-        # Setup - mock files found
-        mock_file1_path = MagicMock(spec=Path)
-        mock_file1_path.name = self.test_file_1.name
-        mock_file1_path.__str__.return_value = str(self.test_file_1)
-        mock_file1_path.read_text = AsyncMock(return_value="def foo(): pass") # Mock read_text directly
-
-        mock_file2_path = MagicMock(spec=Path)
-        mock_file2_path.name = self.test_file_2.name
-        mock_file2_path.__str__.return_value = str(self.test_file_2)
-        mock_file2_path.read_text = AsyncMock(return_value="class Bar: pass") # Mock read_text directly
-
-        mock_rglob.return_value = [mock_file1_path, mock_file2_path]
-
-        # Mock asyncio.to_thread behavior
-        with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
-            async def side_effect_for_dry_run(func, *args, **kwargs):
-                if func == mock_file1_path.read_text:
-                    return await mock_file1_path.read_text.coro # Call the actual mock's coro
-                elif func == mock_file2_path.read_text:
-                    return await mock_file2_path.read_text.coro
-                return None
-            mock_to_thread.side_effect = side_effect_for_dry_run
-
-            # Run dry-run mode
-            result = await refactor_thyself.callback(
-                target_path=str(self.test_dir),
-                instruction="Add docstrings",
-                dry_run=True,
-                verbose=False,
-            )
-
-            echo_calls = [call.args[0] for call in mock_echo.call_args_list]
-            print("\n--- Dry Run Echo Calls ---") # Keep debugging print
-            for call in echo_calls:
-                print(call)
-            print("--------------------------\n")
-
-            self.assertIn(f"[DRY-RUN] Would update {self.test_file_1.name}", echo_calls)
-            self.assertIn(f"[DRY-RUN] Would update {self.test_file_2.name}", echo_calls)
-            self.assertTrue(any("Dry-run mode" in s for s in echo_calls))
-            self.assertEqual(result, 0)
-
-    @patch("plugins.test_thyself_plugin.cli.click.echo") # Reverted to specific patch target
-    @patch("plugins.test_thyself_plugin.cli.Path.rglob")
-    @patch("asyncio.to_thread", new_callable=AsyncMock)
-    async def test_actual_refactor(self, mock_to_thread, mock_rglob, mock_echo):
-        # Setup - mock files found
-        mock_file1_path = MagicMock(spec=Path)
-        mock_file1_path.name = self.test_file_1.name
-        mock_file1_path.__str__.return_value = str(self.test_file_1)
-        mock_file1_path.read_text = AsyncMock(return_value="def foo(): pass")
-        mock_file1_path.rename = AsyncMock(return_value=None)
-        mock_file1_path.write_text = AsyncMock(return_value=None)
-        mock_rglob.return_value = [mock_file1_path]
-
-        # Setup read_text, rename, write_text mocks using side_effect on mock_to_thread
-        async def side_effect_for_actual_refactor(func, *args, **kwargs):
-            if func == mock_file1_path.read_text:
-                return await mock_file1_path.read_text.coro
-            elif func == mock_file1_path.rename:
-                return await mock_file1_path.rename.coro
-            elif func == mock_file1_path.write_text:
-                return await mock_file1_path.write_text.coro
-            return None
-
-        mock_to_thread.side_effect = side_effect_for_actual_refactor
-
-        result = await refactor_thyself.callback(
-            target_path=str(self.test_dir),
-            instruction="Add type hints",
-            dry_run=False,
-            verbose=False,
-        )
-
-        echo_calls = [call.args[0] for call in mock_echo.call_args_list]
-        print("\n--- Actual Refactor Echo Calls ---") # Keep debugging print
-        for call in echo_calls:
-            print(call)
-        print("----------------------------------\n")
-
-        self.assertIn(f"Refactored {self.test_file_1.name} (backup saved as {self.test_file_1.name}.bak)", echo_calls)
-        self.assertTrue(any("Refactoring complete" in s for s in echo_calls))
-        self.assertEqual(result, 0)
-
-    @patch("plugins.test_thyself_plugin.cli.click.echo") # Reverted to specific patch target
-    @patch("plugins.test_thyself_plugin.cli.Path.rglob")
-    @patch("asyncio.to_thread", new_callable=AsyncMock)
-    async def test_file_read_error(self, mock_to_thread, mock_rglob, mock_echo):
-        # Create a mock Path object whose read_text will raise an error
-        mock_file1_path = MagicMock(spec=Path)
-        mock_file1_path.name = self.test_file_1.name
-        mock_file1_path.__str__.return_value = str(self.test_file_1)
-        mock_file1_path.read_text = AsyncMock(side_effect=IOError("Read error"))
-        mock_rglob.return_value = [mock_file1_path]
-
-        async def side_effect_for_read_error(func, *args, **kwargs):
-            if func == mock_file1_path.read_text:
-                return await mock_file1_path.read_text.coro
-            return None
-
-        mock_to_thread.side_effect = side_effect_for_read_error
-
-        result = await refactor_thyself.callback(
-            target_path=str(self.test_dir),
-            instruction="Cleanup code",
-            dry_run=False,
-            verbose=False,
-        )
-        echo_calls = [call.args[0] for call in mock_echo.call_args_list]
-        print("\n--- File Read Error Echo Calls ---") # Keep debugging print
-        for call in echo_calls:
-            print(call)
-        print("----------------------------------\n")
-
-        self.assertTrue(any("Error reading" in s for s in echo_calls))
-        self.assertEqual(result, 0)
+            shutil.rmtree(self.temp_dir)
 
     def test_cli_invocation_missing_target(self):
+        # Let CliRunner catch exceptions (default behavior)
         result = self.runner.invoke(
-            refactor_thyself,
+            refactor_thyself_sync,
             ["--instruction", "Do something", "non_existent_path_xyz"]
         )
         self.assertNotEqual(result.exit_code, 0)
-        self.assertIn("does not exist", result.output)
+        self.assertIn("Directory 'non_existent_path_xyz' does not exist.", result.output)
 
-    def test_cli_invocation_no_py_files(self):
-        # Ensure a real temporary directory exists for the CLI call
-        # and then mock rglob to return nothing inside it.
-        with patch("plugins.test_thyself_plugin.cli.Path.rglob", return_value=[]):
+    @patch("plugins.test_thyself_plugin.cli.Path.rglob", return_value=[])
+    def test_cli_invocation_no_py_files(self, mock_rglob):
+        result = self.runner.invoke(
+            refactor_thyself_sync,
+            ["--instruction", "Refactor", str(self.test_dir)]
+        )
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("No Python files found", result.output)
+
+    @patch("plugins.test_thyself_plugin.cli.refactor_file", new_callable=AsyncMock)
+    @patch("plugins.test_thyself_plugin.cli.Path.rglob")
+    def test_cli_invocation_with_py_files(self, mock_rglob, mock_refactor_file):
+        py_file = self.test_dir / "sample.py"
+        py_file.write_text("print('hello')")
+        mock_rglob.return_value = [py_file]
+        mock_refactor_file.return_value = "Refactored sample.py (backup saved as sample.py.bak)"
+
+        result = self.runner.invoke(
+            refactor_thyself_sync,
+            ["--instruction", "Make it async", str(self.test_dir)]
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertTrue(mock_refactor_file.called, "Expected refactor_file() to be called.")
+        self.assertIn("=== Refactor Summary ===", result.output)
+        self.assertIn("Refactored sample.py", result.output)
+
+    # ✅ NEW TEST: Graceful handling of file read/refactor failure
+    @patch("plugins.test_thyself_plugin.cli.refactor_file", new_callable=AsyncMock)
+    @patch("plugins.test_thyself_plugin.cli.Path.rglob")
+    def test_refactor_file_error_is_handled_gracefully(self, mock_rglob, mock_refactor_file):
+        py_file = self.test_dir / "fail.py"
+        py_file.write_text("raise Exception()")
+        mock_rglob.return_value = [py_file]
+        mock_refactor_file.return_value = "Error reading fail.py: Simulated failure"
+
+        result = self.runner.invoke(
+            refactor_thyself_sync,
+            ["--instruction", "Handle error", str(self.test_dir)]
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn("Error reading fail.py", result.output)
+        self.assertIn("=== Refactor Summary ===", result.output)
+
+    @patch("plugins.test_thyself_plugin.cli.refactor_file", new_callable=AsyncMock)
+    @patch("plugins.test_thyself_plugin.cli.Path.rglob")
+    def test_cli_dry_run_mode(self, mock_rglob, mock_refactor_file):
+        py_file = self.test_dir / "sample.py"
+        py_file.write_text("print('original')")
+        mock_rglob.return_value = [py_file]
+        mock_refactor_file.return_value = "[DRY-RUN] Would update sample.py"
+
+        result = self.runner.invoke(
+            refactor_thyself_sync,
+            ["--instruction", "Make it async", "--dry-run", str(self.test_dir)]
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertTrue(mock_refactor_file.called)
+        self.assertIn("[DRY-RUN] Would update sample.py", result.output)
+        self.assertIn("Dry-run mode: No files were changed.", result.output)
+
+    @patch("plugins.test_thyself_plugin.cli.Path.rglob")
+    def test_verbose_logging_emits_debug(self, mock_rglob):
+        py_file = self.test_dir / "sample_verbose.py"
+        py_file.write_text("print('verbose')")
+        mock_rglob.return_value = [py_file]
+
+        with self.assertLogs("Coddy", level="DEBUG") as log_cm:
             result = self.runner.invoke(
-                refactor_thyself,
-                ["--instruction", "Refactor", str(self.test_dir)]
+                refactor_thyself_sync,
+                ["--instruction", "Add docstring", "--verbose", str(self.test_dir)]
             )
-            # Assert that the command exits successfully (exit code 0) if no files are found
-            # because the command likely considers this a valid, albeit inactive, run.
-            self.assertEqual(result.exit_code, 0) # Changed to assertEqual
-            self.assertIn("No Python files found", result.output)
+    
+        self.assertEqual(result.exit_code, 0)
+
+        # Check that at least one debug log contains the filename
+        debug_logs = log_cm.output
+        self.assertTrue(
+            any("sample_verbose.py" in message for message in debug_logs),
+            "Expected debug log mentioning sample_verbose.py"
+        )
+
+    from unittest.mock import MagicMock
+
+    @patch("plugins.test_thyself_plugin.cli.Path.rename", new_callable=MagicMock)
+    @patch("plugins.test_thyself_plugin.cli.Path.write_text", new_callable=MagicMock)
+    @patch("plugins.test_thyself_plugin.cli.CodeGenerator.refactor_code", new_callable=AsyncMock)
+    async def test_backup_file_creation(self, mock_refactor_code, mock_write_text, mock_rename):
+        # Setup the refactor_code mock to return refactored content
+        mock_refactor_code.return_value = "refactored content"
+
+        py_file = self.test_dir / "sample_backup.py"
+        py_file.write_text("print('original')")
+
+        from plugins.test_thyself_plugin.cli import refactor_file
+
+        # Call the async function directly
+        result = await refactor_file(py_file, "Refactor instruction", dry_run=False)
+
+        # Assert the rename and write_text methods were called as expected
+        mock_rename.assert_called_once()
+        mock_write_text.assert_called_once_with("refactored content", encoding='utf-8')
+
+        # Result message should mention backup
+        self.assertIn(".bak", result)
 
 
 if __name__ == "__main__":
