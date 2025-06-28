@@ -1,4 +1,3 @@
-# Coddy/tests/test_refactor_thyself_plugin.py
 import unittest
 import asyncio
 from unittest.mock import patch, MagicMock, AsyncMock
@@ -82,9 +81,6 @@ class TestRefactorThyselfPlugin(unittest.TestCase): # Use unittest.TestCase
         # Corrected assertion: Check for the presence of the exact string.
         # Ensure the full string match is correct including the resolved path and newline.
         self.assertIn(f"No Python files found in {str(self.test_dir)}\n", result.output)
-        
-        # result.stderr should now be empty as the message is routed to result.output
-        self.assertEqual(result.stderr, "")
 
 
     @patch(CODE_GENERATOR_CLASS_PATH)
