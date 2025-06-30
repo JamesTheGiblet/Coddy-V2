@@ -189,8 +189,8 @@ async def handle_instruction(instruction: str):
             except ValueError as e: # Catch safe_path errors
                 await display_message(f"Invalid file path: {file_path}. Error: {e}", "error")
             except Exception as e:
-                await display_message(f"An unexpected error occurred while reading '{file_path}': {e}", "error")
                 await log_error(f"Failed to read file: {file_path}", exc_info=True)
+                await display_message(f"An unexpected error occurred while reading '{file_path}': {e}", "error")
 
 
         elif command_name == "write":
@@ -206,8 +206,8 @@ async def handle_instruction(instruction: str):
             except ValueError as e: # Catch safe_path errors
                 await display_message(f"Invalid file path: {file_path}. Error: {e}", "error")
             except Exception as e:
+                await log_error(f"Failed to write file: {file_path}", exc_info=True)
                 await display_message(f"An unexpected error occurred while writing to '{file_path}': {e}", "error")
-            await log_error(f"Failed to write file: {file_path}", exc_info=True)
 
 
         elif command_name == "list":
@@ -223,8 +223,8 @@ async def handle_instruction(instruction: str):
             except ValueError as e: # Catch safe_path errors
                 await display_message(f"Invalid directory path: {directory_path}. Error: {e}", "error")
             except Exception as e:
+                await log_error(f"Failed to list directory: {directory_path}", exc_info=True)
                 await display_message(f"An unexpected error occurred while listing '{directory_path}': {e}", "error")
-            await log_error(f"Failed to list directory: {directory_path}", exc_info=True)
 
 
         elif command_name == "exec":
