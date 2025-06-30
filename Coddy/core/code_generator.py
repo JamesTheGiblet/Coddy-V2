@@ -106,6 +106,51 @@ class CodeGenerator:
             print(f"Error refactoring code: {e}")
             return f"# Failed to refactor code: {e}\n\n{original_code}"
 
+    async def generate_tests_for_file(self, source_code: str) -> str:
+        """
+        Generates pytest unit tests for a given block of Python source code.
+
+        Args:
+            source_code: The original Python code as a string.
+
+        Returns:
+            A string containing the generated pytest code.
+        """
+        print(f"Generating unit tests for source code...")
+
+        prompt = f"""
+        You are an expert Python testing engineer. Your task is to write a comprehensive suite of unit tests for the provided Python code using the `pytest` framework.
+
+        - Analyze the provided source code to understand its functions, classes,and methods.
+        - Generate clear, concise, and effective `pytest` tests.
+        - Cover normal use cases, edge cases, and potential error conditions.
+        - Ensure necessary imports are included.
+        - Return only the complete, runnable Python code for the tests. Do not add any explanations,
+        introductions, or markdown formatting like ```python.
+
+        Source Code to Test:
+        ---
+        {source_code}
+        ---
+
+        Pytest Test Code:
+        """
+
+        try:
+            # Using a lower temperature for more predictable code generation
+            generated_tests = await self.llm_comm.summarize_text(prompt, temperature=0.2, top_p=0.9)
+
+            # Clean up the response to ensure it's just the code block
+            if "```python" in generated_tests:
+                generated_tests = generated_tests.split("```python")[1].split("```")[0]
+            elif "```" in generated_tests:
+                generated_tests = generated_tests.split("```")[1].split("```")[0]
+
+            return generated_tests.strip()
+        except Exception as e:
+            print(f"Error generating unit tests: {e}")
+            return f"# Failed to generate unit tests: {e}\n\n"
+
 # Example Usage
 async def main_test_code_gen():
     print("\n--- Testing CodeGenerator ---")
@@ -120,6 +165,19 @@ async def main_test_code_gen():
     )
     print("\n--- Generated Function ---")
     print(function_code)
+
+    print("\n--- Testing Test Generation ---")
+    sample_code = """
+def add(a, b):
+    return a + b
+
+class Calculator:
+    def multiply(self, x, y):
+        return x * y
+"""
+    test_code = await code_gen.generate_tests_for_file(sample_code)
+    print("\n--- Generated Test Code ---")
+    print(test_code)
     print("\n--- End of CodeGenerator Tests ---")
 
 if __name__ == "__main__":

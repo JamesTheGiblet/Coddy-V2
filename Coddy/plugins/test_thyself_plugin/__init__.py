@@ -1,18 +1,6 @@
-# Coddy/plugins/test_thyself_plugin/__init__.py
+# c:/Users/gilbe/Documents/GitHub/Coddy V2/Coddy/plugins/test_thyself_plugin/__init__.py
+from .cli import refactor_thyself, test_thyself
 
-import logging
-
-# Import both commands from the .cli module
-from .cli import refactor_thyself_sync, test_thyself
-
-# Get the logger instance for this __init__.py file
-logger = logging.getLogger("Coddy")
-
-def register(cli):
-    """
-    Registers the refactor_thyself_sync and test_thyself commands with the Coddy CLI.
-    """
-    cli.add_command(refactor_thyself_sync)
-    cli.add_command(test_thyself) # Register the new command
-    logger.info("Loaded refactor_thyself and test_thyself plugins.")
-
+def register():
+    """Returns the commands to be registered by the plugin manager."""
+    return [refactor_thyself, test_thyself]

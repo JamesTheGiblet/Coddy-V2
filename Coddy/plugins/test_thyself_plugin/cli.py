@@ -1,11 +1,8 @@
 import asyncio
-import io
 import click
 import logging
 from pathlib import Path
-import shutil
-import unittest
-import sys
+import pytest
 
 from core.code_generator import CodeGenerator
 
@@ -84,8 +81,8 @@ async def _refactor_thyself_async_impl(target_path, instruction, dry_run, verbos
     return 0
 
 @click.command(
-    "refactor_thyself_sync",
-    help="Sync wrapper for async refactor_thyself command"
+    "refactor-thyself",
+    help="Refactors Coddy's own codebase using an instruction."
 )
 @click.argument(
     "target_path",
@@ -112,7 +109,7 @@ async def _refactor_thyself_async_impl(target_path, instruction, dry_run, verbos
     default=False,
     help="Show detailed logs."
 )
-def refactor_thyself_sync(target_path, instruction, dry_run, verbose):
+def refactor_thyself(target_path, instruction, dry_run, verbose):
     """
     Synchronous wrapper for the async refactor_thyself command,
     to allow it to be called from standard Click CLI entry points.
@@ -123,7 +120,7 @@ def refactor_thyself_sync(target_path, instruction, dry_run, verbose):
     raise SystemExit(exit_code)  # <-- Key fix to ensure correct CLI exit behavior
 
 @click.command(
-    "test_thyself",
+    "test-thyself",
     help="Autonomously execute Coddy's internal test suite."
 )
 @click.option(
@@ -134,38 +131,19 @@ def refactor_thyself_sync(target_path, instruction, dry_run, verbose):
 )
 def test_thyself(test_path):
     """
-    Executes Coddy's internal unit tests using unittest discovery.
+    Executes Coddy's internal unit tests using pytest.
+    This is more robust and consistent with the main CLI entry point.
     """
     click.echo(f"Starting Coddy's self-test suite from: {test_path}")
 
-    _original_stdout = sys.stdout
-    _original_stderr = sys.stderr
+    # Pytest handles its own output capturing, so we don't need to redirect stdout/stderr.
+    # It returns an exit code directly.
+    exit_code = pytest.main([test_path])
 
-    captured_stdout = io.StringIO()
-    captured_stderr = io.StringIO()
-    sys.stdout = captured_stdout
-    sys.stderr = captured_stderr
+    if exit_code == 0:
+        click.echo("\nCoddy self-test: ALL TESTS PASSED! ✅")
+    else:
+        click.echo(f"\nCoddy self-test: TESTS FAILED! ❌ (exit code: {exit_code})")
 
-    test_result = None
-    try:
-        suite = unittest.TestLoader().discover(test_path)
-        runner = unittest.TextTestRunner(stream=captured_stdout, verbosity=1)
-        test_result = runner.run(suite)
-    except SystemExit as e:
-        exit_code = e.code
-    finally:
-        sys.stdout = _original_stdout
-        sys.stderr = _original_stderr
-
-        click.echo("\n=== Test Output ===")
-        click.echo(captured_stdout.getvalue())
-        if captured_stderr.getvalue():
-            click.echo("\n=== Test Errors ===")
-            click.echo(captured_stderr.getvalue(), err=True)
-
-        if test_result and test_result.wasSuccessful():
-            click.echo("\nCoddy self-test: ALL TESTS PASSED! ✅")
-            raise SystemExit(0)
-        else:
-            click.echo("\nCoddy self-test: TESTS FAILED! ❌")
-            raise SystemExit(1)
+    # The command should exit with the same code as pytest.
+    raise SystemExit(exit_code)

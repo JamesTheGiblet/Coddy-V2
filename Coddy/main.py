@@ -1,13 +1,20 @@
 # main.py
+import asyncio
 import click
 from core.ui_generator import UIGenerator
 from core.utils import write_file
 from core.plugin_manager import PluginManager
+from ui.cli import start_cli
 
-@click.group()
-def cli():
-    """Coddy V2: Your AI Dev Companion"""
-    pass
+@click.group(invoke_without_command=True)
+@click.pass_context
+def cli(ctx):
+    """
+    Coddy V2: Your AI Dev Companion.
+    Run without a command to enter the interactive shell.
+    """
+    if ctx.invoked_subcommand is None:
+        asyncio.run(start_cli())
 
 @click.group()
 def build():

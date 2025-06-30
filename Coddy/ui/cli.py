@@ -1,12 +1,14 @@
-# Coddy/ui/cli.py
+# cli.py
 import asyncio
 import sys
 import os
+import pytest
 import uuid # For generating session_id
 import datetime # For timestamps (though MemoryService handles this)
 from typing import Optional, List, Dict, Any # Added for type hints
 import shlex # For robust command parsing
 import traceback # For detailed exception information
+from pathlib import Path # For robust path manipulation
 
 # Corrected sys.path.insert for importing modules from Coddy/core and Coddy/vibe
 # Add Coddy/core to the Python path
@@ -16,6 +18,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 
 try:
+    from code_generator import CodeGenerator # For test generation
     from utility_functions import read_file, write_file, list_files, execute_command
     from memory_service import MemoryService # Assuming memory_service.py is in core
     from pattern_oracle import PatternOracle # Assuming pattern_oracle.py is in core
@@ -322,251 +325,117 @@ async def handle_instruction(instruction: str):
                             formatted_time = timestamp.split('T')[0]
 
                     content_display = mem.get('content', 'N/A')
+                    # Pretty print content if it's a dictionary
                     if isinstance(content_display, dict):
-                        content_display = str(content_display)
-
-                    await display_message(f"   - [{formatted_time}] {content_display[:80]}{'...' if len(content_display) > 80 else ''}", "response")
-                await display_message("--- End Context ---", "response")
-                command_logged = True
+                        content_str = "\n".join([f"     - {k}: {v}" for k, v in content_display.items()])
+                        await display_message(f"  [{formatted_time}] \n{content_str}", "response")
+                    else:
+                        await display_message(f"  [{formatted_time}] {content_display}", "response")
+                await display_message("--- End of Context ---", "response")
             else:
-                await display_message(f"No recent context available for user '{current_user_id}'. Perform some commands to build context across sessions.", "info")
-
-
-        elif command_name == "vibe":
-            if len(args) >= 2 and args[0].lower() == "save":
-                snapshot_name = args[1]
-                # Placeholder for actual TODOs and vibe data extraction
-                current_todos_for_snapshot = [] 
-                if vibe_engine:
-                    try:
-                        current_vibe_data = vibe_engine.get_current_vibe() # Get latest vibe state
-                        current_vibe_data["todos"] = current_todos_for_snapshot # Add todos placeholder
-                        success = await vibe_engine.save_vibe_to_file(snapshot_name, current_vibe_data)
-                        if success:
-                            await display_message(f"Vibe snapshot '{snapshot_name}' saved to local file.", "success")
-                            command_logged = True
-                        else:
-                            await display_message(f"Failed to save vibe snapshot '{snapshot_name}' to local file.", "error")
-                    except Exception as e:
-                        await display_message(f"Error saving vibe snapshot '{snapshot_name}': {e}", "error")
-                        await log_error(f"Vibe save error: {e}", exc_info=True)
-                else:
-                    await display_message("VibeModeEngine not initialized, cannot save vibe snapshot.", "warning")
-            elif len(args) >= 2 and args[0].lower() == "load":
-                snapshot_name = args[1]
-                if vibe_engine:
-                    try:
-                        success = await vibe_engine.load_vibe_from_file(snapshot_name)
-                        if success:
-                            await display_message(f"Vibe snapshot '{snapshot_name}' loaded from local file.", "success")
-                            await load_session_context() # Refresh context after loading a vibe from file
-                            command_logged = True
-                        else:
-                            await display_message(f"Failed to load vibe snapshot '{snapshot_name}' from local file.", "error")
-                    except FileNotFoundError:
-                        await display_message(f"Vibe snapshot '{snapshot_name}' not found.", "error")
-                    except Exception as e:
-                        await display_message(f"Error loading vibe snapshot '{snapshot_name}': {e}", "error")
-                        await log_error(f"Vibe load error: {e}", exc_info=True)
-                else:
-                    await display_message("VibeModeEngine not initialized, cannot load vibe snapshot.", "warning")
-            elif len(args) == 1 and args[0].lower() == "list":
-                if vibe_engine:
-                    try:
-                        snapshots = await vibe_engine.list_local_vibe_snapshots()
-                        if snapshots:
-                            await display_message("--- Available Vibe Snapshots ---", "response")
-                            for s_name in snapshots:
-                                await display_message(f"- {s_name}", "response")
-                            await display_message("---", "response")
-                            command_logged = True
-                        else:
-                            await display_message("No local vibe snapshots found.", "info")
-                    except Exception as e:
-                        await display_message(f"Error listing vibe snapshots: {e}", "error")
-                        await log_error(f"Vibe list error: {e}", exc_info=True)
-                else:
-                    await display_message("VibeModeEngine not initialized, cannot list vibe snapshots.", "warning")
-            else:
-                await display_message("Usage: vibe save <name> | vibe load <name> | vibe list", "warning")
-
-
-        elif command_name == "memory":
-            if len(args) >= 1 and args[0].lower() == "show":
-                # Assuming 'memory show' might display recent raw memories or summary
-                if memory_service:
-                    await display_message("Showing recent raw memories (placeholder)...", "info")
-                    try:
-                        recent_mems = await memory_service.retrieve_context(num_recent=5)
-                        if recent_mems:
-                            for mem in recent_mems:
-                                await display_message(f"- {mem.get('content', 'N/A')}", "response")
-                        else:
-                            await display_message("No recent memories to show.", "info")
-                        command_logged = True
-                    except Exception as e:
-                        await display_message(f"Error showing memories: {e}", "error")
-                        await log_error(f"Memory show error: {e}", exc_info=True)
-                else:
-                    await display_message("MemoryService not initialized, cannot show memories.", "warning")
-            else:
-                await display_message("Usage: memory show (more commands to come)", "warning")
-
-        elif command_name == "status":
-            if git_analyzer:
-                await display_message("Fetching Git status...", "info")
-                status = await git_analyzer.get_status()
-                await display_message(status if status else "Working directory is clean.", "response")
-                command_logged = True
-            else:
-                await display_message("GitAnalyzer not initialized.", "warning")
-        
-        elif command_name == "branch":
-            if git_analyzer:
-                await display_message("Fetching Git branches...", "info")
-                branches = await git_analyzer.get_branches()
-                if branches:
-                    for branch in branches:
-                        await display_message(f"- {branch}", "response")
-                else:
-                    await display_message("No branches found.", "info")
-                command_logged = True
-            else:
-                await display_message("GitAnalyzer not initialized.", "warning")
-
-        elif command_name == "log":
-            if git_analyzer:
-                await display_message("Fetching Git commit logs...", "info")
-                try:
-                    limit = int(args[0]) if args else 5
-                except ValueError:
-                    await display_message("Invalid limit. Please provide a number.", "warning")
-                    return
-                commits = await git_analyzer.get_commit_logs(limit=limit)
-                if commits:
-                    for commit in commits:
-                        await display_message(f"Hash: {commit['hash'][:7]} | Author: {commit['author']} | Message: {commit['message']}", "response")
-                else:
-                    await display_message("No commits found.", "info")
-                command_logged = True
-            else:
-                await display_message("GitAnalyzer not initialized.", "warning")
-
-        elif command_name == "summarize-repo":
-            if git_analyzer:
-                await display_message("Generating AI summary of repository activity...", "info")
-                try:
-                    num_commits = int(args[0]) if args else 5
-                except ValueError:
-                    await display_message("Invalid number of commits. Please provide a number.", "warning")
-                    return
-                summary = await git_analyzer.summarize_repo_activity(num_commits=num_commits)
-                await display_message("\n--- Repository Summary ---", "response")
-                await display_message(summary, "response")
-                command_logged = True
-            else:
-                await display_message("GitAnalyzer not initialized.", "warning")
-
-
-        elif command_name == "help":
-            await display_message("\n--- Coddy CLI Commands ---", "info")
-            await display_message("  read <file_path>                       : Read content of a file.", "info")
-            await display_message("  write <file_path> <content>          : Write content to a file.", "info")
-            await display_message("  list [directory_path]                : List files/directories in a path (defaults to current).", "info")
-            await display_message("  exec <command_string>                : Execute a shell command.", "info")
-            await display_message("  checkpoint save <name> [message]     : Save a named checkpoint of the current state.", "info")
-            await display_message("  checkpoint load <name>               : Load details of a named checkpoint.", "info")
-            await display_message("  show context                         : Display recent user context/memories.", "info")
-            await display_message("  vibe save <name>                     : Save the current 'vibe' (focus, context) to a local file.", "info")
-            await display_message("  vibe load <name>                     : Load a 'vibe' from a local file.", "info")
-            await display_message("  vibe list                            : List all local vibe snapshots.", "info")
-            await display_message("  memory show                          : Show recent raw memories.", "info")
-            await display_message("  status                               : Show current Git repository status.", "info")
-            await display_message("  branch                               : List all Git branches.", "info")
-            await display_message("  log [limit]                          : Show recent Git commit logs (default limit 5).", "info")
-            await display_message("  summarize-repo [num_commits]         : Get an AI-generated summary of recent repository activity.", "info")
-            await display_message("  exit | quit | bye                    : Exit Coddy.", "info")
-            await display_message("--------------------------\n", "info")
+                await display_message("No context loaded for the current session.", "info")
             command_logged = True
 
+        elif command_name == "vibe":
+            if vibe_engine:
+                if not args:
+                    current_vibe = vibe_engine.get_current_vibe()
+                    await display_message(f"Current Vibe: {current_vibe}", "response")
+                elif args[0].lower() == "set":
+                    if len(args) > 1:
+                        new_vibe = " ".join(args[1:])
+                        await vibe_engine.set_vibe(new_vibe)
+                        await display_message(f"Vibe set to: {new_vibe}", "success")
+                    else:
+                        await display_message("Usage: vibe set <description>", "warning")
+                elif args[0].lower() == "clear":
+                    await vibe_engine.clear_vibe()
+                    await display_message("Vibe cleared.", "success")
+                else:
+                    await display_message("Usage: vibe [set <description>|clear]", "warning")
+                command_logged = True
+            else:
+                await display_message("VibeModeEngine not initialized.", "warning")
+
+        elif command_name == "memory":
+            if memory_service:
+                if not args or args[0].lower() == "search":
+                    query_str = " ".join(args[1:]) if len(args) > 1 else ""
+                    await display_message(f"Searching memory for: '{query_str}'...", "info")
+                    results = await memory_service.load_memory(query={"content": {"$regex": query_str, "$options": "i"}})
+                    if results:
+                        await display_message(f"Found {len(results)} memories:", "response")
+                        for mem in results[:5]: # Show top 5
+                             await display_message(f"- {mem.get('timestamp')}: {mem.get('content')}", "response")
+                    else:
+                        await display_message("No matching memories found.", "info")
+                else:
+                    await display_message("Usage: memory [search <query>]", "warning")
+                command_logged = True
+            else:
+                await display_message("MemoryService not initialized.", "warning")
+
+        elif command_name == "help":
+            await display_message("\n--- Coddy Commands ---", "response")
+            await display_message("  read <file>              - Read the content of a file.", "response")
+            await display_message("  write <file> <content>   - Write content to a file.", "response")
+            await display_message("  list [directory]         - List files in a directory.", "response")
+            await display_message("  exec <command>           - Execute a shell command.", "response")
+            await display_message("  checkpoint save|load <name> - Save or load a session checkpoint.", "response")
+            await display_message("  show context             - Display the loaded user context.", "response")
+            await display_message("  vibe [set|clear]         - Manage the current vibe/focus.", "response")
+            await display_message("  memory [search]          - Interact with long-term memory.", "response")
+            await display_message("  unit_tester <file>       - Generate unit tests for a file.", "response")
+            await display_message("  help                     - Show this help message.", "response")
+            await display_message("  exit, quit, bye          - Exit the CLI.", "response")
+            await display_message("---", "response")
+            command_logged = True
 
         else:
-            await display_message("Unknown instruction. Type 'help' for available commands.", "warning")
-            await log_warning(f"Unknown instruction received: '{instruction}'")
+            await display_message(f"Unknown instruction: '{command_name}'. Type 'help' for available commands.", "warning")
+            if memory_service:
+                await memory_service.store_memory(
+                    content={"type": "unrecognized_command", "command": instruction},
+                    tags=["cli_command", "unrecognized"]
+                )
 
-    except ValueError as e: # Catch safe_path or other validation errors that might be raised by utility functions
-        await display_message(f"Invalid input or operation: {e}", "error")
-        await log_error(f"Input validation error for instruction '{instruction}': {e}", exc_info=True)
     except Exception as e:
-        # Generic catch-all for any unhandled exceptions during instruction processing
-        await display_message(f"An unexpected error occurred while processing instruction: {e}", "error")
-        await log_error(f"Unhandled exception processing instruction '{instruction}': {e}", exc_info=True)
+        await display_message(f"An unexpected error occurred while handling instruction: {e}", "error")
+        await log_error(f"Instruction Handler Error for '{instruction}'", exc_info=True)
 
     finally:
-        # Always update adaptive prompt suggestion after a command is processed (if it was valid)
-        if command_logged:
-            await update_adaptive_prompt_suggestion()
+        if command_logged and memory_service:
+            try:
+                await memory_service.store_memory(
+                    content={"type": "command", "command": command_name, "full_instruction": instruction},
+                    tags=["cli_command", command_name]
+                )
+            except Exception as e:
+                await display_message(f"Failed to log command to memory: {e}", "error")
+                await log_error(f"Memory logging failed for command: {instruction}", exc_info=True)
 
 
 async def start_cli():
     """
-    Main loop for the Coddy CLI.
-    Initializes services and handles user input with comprehensive error handling.
+    The main asynchronous function to start and run the Coddy CLI.
     """
-    # Attempt to initialize services. If this fails, the app will exit.
-    await initialize_services() 
-    await load_session_context() # Load past context for this user
-    await update_adaptive_prompt_suggestion() # Initial suggestion
+    await initialize_services()
+    await load_session_context()
 
     await display_message("🚀 Coddy CLI (v2.0.0) - Your Async Dev Companion, Reimagined.", "info")
     await display_message("Type 'exit' to quit.", "info")
     await display_message(f"User ID: {current_user_id}, Session ID: {current_session_id}", "info")
 
-
     while True:
         try:
-            # Use the new _get_cli_prompt function
             prompt_text = await _get_cli_prompt()
-            # Use asyncio.to_thread for blocking input to prevent blocking the event loop
             instruction = await asyncio.to_thread(input, prompt_text)
-            if not instruction.strip():
-                continue
             await handle_instruction(instruction)
-        except EOFError: # Handles Ctrl+D
-            await display_message("\nReceived EOF. Exiting Coddy CLI. Goodbye!", "info")
-            sys.exit(0)
-        except KeyboardInterrupt: # Handles Ctrl+C
-            await display_message("\nOperation interrupted. Exiting Coddy CLI. Goodbye!", "info")
-            sys.exit(0) # Exit gracefully on Ctrl+C
+            await update_adaptive_prompt_suggestion()
+        except (KeyboardInterrupt, EOFError):
+            await display_message("\nExiting Coddy CLI. Goodbye!", "info")
+            break
         except Exception as e:
-            # This catches errors in the input() call or if asyncio.to_thread fails
-            await display_message(f"An unexpected error occurred in the CLI loop: {e}", "error")
-            await log_error(f"Unhandled error in CLI input loop: {e}", exc_info=True)
-            # If an error occurs here, it's severe enough to exit
-            sys.exit(1)
-
-
-if __name__ == "__main__":
-    # Ensure PROJECT_ROOT is correctly set for standalone execution/testing of cli.py
-    # This might be redundant if cli.py is always run as part of a larger Coddy system init.
-    # However, for direct testing, it's safer.
-    # Assuming cli.py is in Coddy/ui/, then '..' to Coddy/, and then parent dir is project root
-    # Corrected: PROJECT_ROOT defined in utility_functions.py is the Coddy/ directory.
-    # So when cli.py imports utility_functions, it gets the correct PROJECT_ROOT.
-    # No need to redefine it here.
-    
-    # Final catch-all for any unhandled exceptions that escape the CLI loop,
-    # specifically for the initial asyncio.run(start_cli()) call.
-    try:
-        asyncio.run(start_cli())
-    except Exception as e:
-        print(f"\nFATAL ERROR: Coddy CLI terminated unexpectedly: {e}", file=sys.stderr)
-        # Log the critical error with full traceback
-        # We need to run this in a new event loop if the previous one is closed
-        try:
-            asyncio.run(log_error(f"FATAL CLI termination: {e}", exc_info=True))
-        except RuntimeError: # Catch if event loop is already closed/running
-            import logging
-            logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
-            logging.error(f"FATAL CLI termination (RuntimeError during async logging): {e}", exc_info=True)
-        sys.exit(1)
+            await display_message(f"\nAn unexpected error occurred in the main loop: {e}", "error")
+            await log_error("Main CLI loop error", exc_info=True)
+            break
