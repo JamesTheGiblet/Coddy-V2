@@ -1,0 +1,20 @@
+# Git
+.git
+.gitignore
+
+# Python virtual environment
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Test artifacts and temporary files
+temp_test_*
+*.bak
+
+# IDE / Editor specific
+.vscode/
+.idea/

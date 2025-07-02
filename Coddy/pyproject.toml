@@ -1,0 +1,27 @@
+# c:/Users/gilbe/Documents/GitHub/Coddy V2/Coddy/pyproject.toml
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "coddy"
+version = "2.0.0"
+description = "Coddy V2: Your AI Dev Companion"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "click",
+    "httpx",
+    "rich",
+    "redis[hiredis]",
+    "aiofiles",
+    "python-dotenv",
+    "websockets"
+]
+
+[project.optional-dependencies]
+test = ["pytest", "pytest-asyncio"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["api*", "core*", "plugins*", "ui*"]

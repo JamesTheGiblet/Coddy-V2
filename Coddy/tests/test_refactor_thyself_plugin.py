@@ -9,7 +9,7 @@ import io # Import io for StringIO
 import logging # Needed for assertLogs
 
 # Import the synchronous wrapper command from its canonical location
-from plugins.test_thyself_plugin.cli import refactor_thyself_sync
+from plugins.test_thyself_plugin.cli import refactor_thyself
 
 # Corrected Path for CodeGenerator class: Patch it where it's imported/used in cli.py
 CODE_GENERATOR_CLASS_PATH = "plugins.test_thyself_plugin.cli.CodeGenerator"
@@ -55,7 +55,7 @@ class TestRefactorThyselfPlugin(unittest.TestCase): # Use unittest.TestCase
         Tests that the refactor_thyself command correctly handles a non-existent target path.
         """
         result = self.runner.invoke(
-            refactor_thyself_sync, # Call the synchronous wrapper
+            refactor_thyself, # Call the synchronous wrapper
             ["--instruction", "Do something", "non_existent_path_xyz"]
         )
         # Expected exit code is non-zero because the path doesn't exist (Click's default behavior)
@@ -72,7 +72,7 @@ class TestRefactorThyselfPlugin(unittest.TestCase): # Use unittest.TestCase
         mock_rglob.return_value = [] # Simulate no Python files found
 
         result = self.runner.invoke(
-            refactor_thyself_sync, # Call the synchronous wrapper
+            refactor_thyself, # Call the synchronous wrapper
             ["--instruction", "Refactor", str(self.test_dir)] # Use str(self.test_dir) which is now resolved
         )
         # Expect exit code 1 as per cli.py's return 1 on no files.
@@ -96,7 +96,7 @@ class TestRefactorThyselfPlugin(unittest.TestCase): # Use unittest.TestCase
         mock_code_generator_instance.refactor_code = AsyncMock(return_value="refactored content")
 
         result = self.runner.invoke(
-            refactor_thyself_sync,
+            refactor_thyself,
             ["--instruction", "Make it async", str(self.test_dir)]
         )
 
@@ -130,7 +130,7 @@ class TestRefactorThyselfPlugin(unittest.TestCase): # Use unittest.TestCase
         mock_code_generator_instance.refactor_code = AsyncMock(return_value="some content") 
 
         result = self.runner.invoke(
-            refactor_thyself_sync,
+            refactor_thyself,
             ["--instruction", "Handle error", str(self.test_dir)]
         )
 
@@ -158,7 +158,7 @@ class TestRefactorThyselfPlugin(unittest.TestCase): # Use unittest.TestCase
         mock_code_generator_instance.refactor_code = AsyncMock(return_value="print('refactored')") # Refactored content
 
         result = self.runner.invoke(
-            refactor_thyself_sync,
+            refactor_thyself,
             ["--instruction", "Make it async", "--dry-run", str(self.test_dir)]
         )
 
@@ -187,7 +187,7 @@ class TestRefactorThyselfPlugin(unittest.TestCase): # Use unittest.TestCase
         mock_code_generator_instance.refactor_code = AsyncMock(return_value="refactored verbose content")
 
         result = self.runner.invoke(
-            refactor_thyself_sync,
+            refactor_thyself,
             ["--instruction", "Add docstring", "--verbose", str(self.test_dir)]
         )
         
@@ -216,7 +216,7 @@ class TestRefactorThyselfPlugin(unittest.TestCase): # Use unittest.TestCase
 
         # Invoke the synchronous command wrapper
         result = self.runner.invoke(
-            refactor_thyself_sync,
+            refactor_thyself,
             ["--instruction", "Refactor instruction", str(self.test_dir)]
         )
 

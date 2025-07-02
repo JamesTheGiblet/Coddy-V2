@@ -136,45 +136,53 @@ class TestCliInterface(unittest.IsolatedAsyncioTestCase):
         self.mock_vibe_engine = patch_vibe_engine.start()
         self.mock_vibe_engine.update_activity = AsyncMock()
         self.addCleanup(patch_vibe_engine.stop)
+        
+        # Mock the httpx.AsyncClient to intercept API calls from the CLI
+        patch_httpx = patch('ui.cli.httpx.AsyncClient', new_callable=MagicMock)
+        self.mock_async_client_class = patch_httpx.start()
+        self.addCleanup(patch_httpx.stop)
 
-        # Create async mocks for file operations
-        self.mock_read_file = AsyncMock(return_value="file content")
-        self.mock_write_file = AsyncMock()
-        self.mock_list_files = AsyncMock(return_value=["file1.txt", "dir1/"])
+        # Configure the mock client instance and its context manager
+        self.mock_async_client_instance = self.mock_async_client_class.return_value
+        self.mock_async_client_context = self.mock_async_client_instance.__aenter__.return_value
+
+        # Mock for the 'exec' command remains the same
         self.mock_execute_command = AsyncMock(return_value=(0, "cmd output", ""))
-
-        # Patch the functions in the 'cli' module where they are used.
-        patch_read = patch('ui.cli.read_file', self.mock_read_file)
-        patch_read.start()
-        self.addCleanup(patch_read.stop)
-
-        patch_write = patch('ui.cli.write_file', self.mock_write_file)
-        patch_write.start()
-        self.addCleanup(patch_write.stop)
-
-        patch_list = patch('ui.cli.list_files', self.mock_list_files)
-        patch_list.start()
-        self.addCleanup(patch_list.stop)
-
         patch_exec = patch('ui.cli.execute_command', self.mock_execute_command)
         patch_exec.start()
         self.addCleanup(patch_exec.stop)
 
     async def test_handle_read_command(self):
         """Test `read` command in CLI."""
+        # Configure mock response for the read API call
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {"content": "file content"}
+        self.mock_async_client_context.get = AsyncMock(return_value=mock_response)
+
         await handle_instruction("read test.txt")
-        self.mock_read_file.assert_called_once_with("test.txt")
+
+        self.mock_async_client_context.get.assert_awaited_once_with(
+            "http://127.0.0.1:8000/api/files/read", params={"path": "test.txt"}
+        )
         sent_messages = [call.args[0]['text'] for call in self.mock_send_to_websocket_server.call_args_list]
         all_output = "\n".join(sent_messages)
         self.assertIn("Coddy> read test.txt", all_output)
         self.assertIn("Content of 'test.txt':\n---\nfile content\n---", all_output)
         self.assertIn("Successfully read 'test.txt'.", all_output)
 
-
     async def test_handle_write_command(self):
         """Test `write` command in CLI."""
+        # Configure mock response for the write API call
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        self.mock_async_client_context.post = AsyncMock(return_value=mock_response)
+
         await handle_instruction("write new_file.txt Some content here.")
-        self.mock_write_file.assert_called_once_with("new_file.txt", "Some content here.")
+
+        self.mock_async_client_context.post.assert_awaited_once_with(
+            "http://127.0.0.1:8000/api/files/write", json={"path": "new_file.txt", "content": "Some content here."}
+        )
         sent_messages = [call.args[0]['text'] for call in self.mock_send_to_websocket_server.call_args_list]
         all_output = "\n".join(sent_messages)
         self.assertIn("Coddy> write new_file.txt Some content here.", all_output)
@@ -182,8 +190,17 @@ class TestCliInterface(unittest.IsolatedAsyncioTestCase):
 
     async def test_handle_list_command(self):
         """Test `list` command in CLI."""
+        # Configure mock response for the list API call
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {"items": ["file1.txt", "dir1/"]}
+        self.mock_async_client_context.get = AsyncMock(return_value=mock_response)
+
         await handle_instruction("list my_dir/")
-        self.mock_list_files.assert_called_once_with("my_dir/")
+
+        self.mock_async_client_context.get.assert_awaited_once_with(
+            "http://127.0.0.1:8000/api/files/list", params={"path": "my_dir/"}
+        )
         sent_messages = [call.args[0]['text'] for call in self.mock_send_to_websocket_server.call_args_list]
         all_output = "\n".join(sent_messages)
         self.assertIn("Coddy> list my_dir/", all_output)
@@ -206,7 +223,7 @@ class TestCliInterface(unittest.IsolatedAsyncioTestCase):
         sent_messages = [call.args[0]['text'] for call in self.mock_send_to_websocket_server.call_args_list]
         all_output = "\n".join(sent_messages)
         self.assertIn("Coddy> unrecognized_command arg1 arg2", all_output)
-        self.assertIn("Unknown instruction.", all_output)
+        self.assertIn("Unknown instruction: 'unrecognized_command'. Type 'help' for available commands.", all_output)
 
     @patch('sys.exit')
     async def test_handle_exit_command(self, mock_exit):

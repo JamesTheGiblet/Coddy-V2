@@ -1,4 +1,3 @@
-# c:/Users/gilbe/Documents/GitHub/Coddy V2/Coddy/plugins/unit_tester_plugin/cli.py
 import asyncio
 import click
 import traceback
@@ -20,7 +19,8 @@ def unit_tester(file_path: str):
         try:
             source_code = await asyncio.to_thread(target_file.read_text, encoding='utf-8')
             code_gen = CodeGenerator()
-            test_code = await code_gen.generate_tests_for_file(source_code)
+            # MODIFIED: Pass target_file to generate_tests_for_file
+            test_code = await code_gen.generate_tests_for_file(source_code, target_file) 
 
             # Determine output path (e.g., Coddy/module.py -> Coddy/tests/test_module.py)
             test_dir = Path("tests")

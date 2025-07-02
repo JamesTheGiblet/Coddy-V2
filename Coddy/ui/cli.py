@@ -9,23 +9,17 @@ from typing import Optional, List, Dict, Any # Added for type hints
 import shlex # For robust command parsing
 import traceback # For detailed exception information
 from pathlib import Path # For robust path manipulation
-
-# Corrected sys.path.insert for importing modules from Coddy/core and Coddy/vibe
-# Add Coddy/core to the Python path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'core')))
-# Add Coddy root to the Python path to correctly import the 'vibe' package
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
+import httpx
 
 try:
-    from code_generator import CodeGenerator # For test generation
-    from utility_functions import read_file, write_file, list_files, execute_command
-    from memory_service import MemoryService # Assuming memory_service.py is in core
-    from pattern_oracle import PatternOracle # Assuming pattern_oracle.py is in core
-    from websocket_server import send_to_websocket_server # Assuming websocket_server.py is in core
-    from vibe_mode import VibeModeEngine # Assuming vibe_mode.py is in core
-    from logging_utility import log_info, log_warning, log_error, log_debug # Import the new logging utility
-    from git_analyzer import GitAnalyzer # Import GitAnalyzer for current branch display
+    from core.code_generator import CodeGenerator
+    from core.utility_functions import execute_command
+    from core.memory_service import MemoryService
+    from core.pattern_oracle import PatternOracle
+    from core.websocket_server import send_to_websocket_server
+    from core.vibe_mode import VibeModeEngine
+    from core.logging_utility import log_info, log_warning, log_error, log_debug
+    from core.git_analyzer import GitAnalyzer
 except ImportError as e:
     # This block handles critical import errors at startup
     print(f"FATAL ERROR: Could not import core modules required for CLI: {e}", file=sys.stderr)
@@ -179,49 +173,65 @@ async def handle_instruction(instruction: str):
                 await display_message("Usage: read <file_path>", "warning")
                 return
             file_path = args[0]
+            api_url = "http://127.0.0.1:8000/api/files/read"
             try:
-                content = await read_file(file_path)
-                await display_message(f"Content of '{file_path}':\n---\n{content}\n---", "response")
-                await display_message(f"Successfully read '{file_path}'.", "success")
-                command_logged = True
-            except FileNotFoundError:
-                await display_message(f"File '{file_path}' not found.", "error")
-            except ValueError as e: # Catch safe_path errors
-                await display_message(f"Invalid file path: {file_path}. Error: {e}", "error")
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(api_url, params={"path": file_path})
+                    response.raise_for_status()
+                    data = response.json()
+                    content = data.get("content", "")
+                    await display_message(f"Content of '{file_path}':\n---\n{content}\n---", "response")
+                    await display_message(f"Successfully read '{file_path}'.", "success")
+                    command_logged = True
+            except httpx.HTTPStatusError as e:
+                error_detail = e.response.json().get("detail", e.response.text)
+                await display_message(f"API Error reading '{file_path}': {error_detail}", "error")
+            except httpx.RequestError:
+                await display_message(f"Connection Error: Could not connect to Coddy API to read '{file_path}'. Is the server running?", "error")
             except Exception as e:
-                await log_error(f"Failed to read file: {file_path}", exc_info=True)
+                await log_error(f"Failed to read file via API: {file_path}", exc_info=True)
                 await display_message(f"An unexpected error occurred while reading '{file_path}': {e}", "error")
-
 
         elif command_name == "write":
             if len(args) < 2:
                 await display_message("Usage: write <file_path> <content>", "warning")
                 return
             file_path = args[0]
-            content = " ".join(args[1:]) # Join remaining args as content
+            content = " ".join(args[1:])
+            api_url = "http://127.0.0.1:8000/api/files/write"
             try:
-                await write_file(file_path, content)
-                await display_message(f"Successfully wrote content to '{file_path}'.", "success")
-                command_logged = True
-            except ValueError as e: # Catch safe_path errors
-                await display_message(f"Invalid file path: {file_path}. Error: {e}", "error")
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(api_url, json={"path": file_path, "content": content})
+                    response.raise_for_status()
+                    await display_message(f"Successfully wrote content to '{file_path}'.", "success")
+                    command_logged = True
+            except httpx.HTTPStatusError as e:
+                error_detail = e.response.json().get("detail", e.response.text)
+                await display_message(f"API Error writing to '{file_path}': {error_detail}", "error")
+            except httpx.RequestError:
+                await display_message(f"Connection Error: Could not connect to Coddy API to write to '{file_path}'. Is the server running?", "error")
             except Exception as e:
-                await log_error(f"Failed to write file: {file_path}", exc_info=True)
+                await log_error(f"Failed to write file via API: {file_path}", exc_info=True)
                 await display_message(f"An unexpected error occurred while writing to '{file_path}': {e}", "error")
-
 
         elif command_name == "list":
             directory_path = args[0] if args else './' # Default to current dir if no path given
+            api_url = "http://127.0.0.1:8000/api/files/list"
             try:
-                items = await list_files(directory_path)
-                item_list_str = "\n".join([f"- {item}" for item in items])
-                await display_message(f"Files and directories in '{directory_path}':\n{item_list_str}", "response")
-                await display_message(f"Successfully listed '{directory_path}'.", "success")
-                command_logged = True
-            except FileNotFoundError:
-                await display_message(f"Directory '{directory_path}' not found.", "error")
-            except ValueError as e: # Catch safe_path errors
-                await display_message(f"Invalid directory path: {directory_path}. Error: {e}", "error")
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(api_url, params={"path": directory_path})
+                    response.raise_for_status() # Raise an exception for bad status codes
+                    data = response.json()
+                    items = data.get("items", [])
+                    item_list_str = "\n".join([f"- {item}" for item in items])
+                    await display_message(f"Files and directories in '{directory_path}':\n{item_list_str}", "response")
+                    await display_message(f"Successfully listed '{directory_path}'.", "success")
+                    command_logged = True
+            except httpx.HTTPStatusError as e:
+                error_detail = e.response.json().get("detail", e.response.text)
+                await display_message(f"API Error listing '{directory_path}': {error_detail}", "error")
+            except httpx.RequestError:
+                await display_message(f"Connection Error: Could not connect to Coddy API to list '{directory_path}'. Is the server running?", "error")
             except Exception as e:
                 await log_error(f"Failed to list directory: {directory_path}", exc_info=True)
                 await display_message(f"An unexpected error occurred while listing '{directory_path}': {e}", "error")

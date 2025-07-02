@@ -26,7 +26,7 @@ def test_get_greeting_no_name():
 
 def test_get_greeting_with_spaces():
     assert get_greeting("   ") == "Hello, stranger!"
-    assert get_greeting(" John ") == "Hello, John !"
+    assert get_greeting(" John ") == "Hello, John!"
 
 
 def test_counter_increment():
