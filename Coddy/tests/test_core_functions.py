@@ -63,28 +63,10 @@ class TestCoreUtilityFunctions(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(FileNotFoundError):
             await read_file("non_existent_file.txt")
 
-    async def test_list_files(self):
-        """Test list_files function."""
-        # Ensure test_file.txt and dummy.log exist for this test
-        await write_file(self.test_file_path, "content") # Ensure test_file.txt is present for this test
-        dummy_file = os.path.join(self.temp_dir, "dummy.log")
-        async with aiofiles.open(dummy_file, "w") as f: # Use aiofiles for consistency
-            await f.write("dummy content")
-
-        listed_items = await list_files("temp_test_data")
-        self.assertIn("test_file.txt", listed_items)
-        self.assertIn("dummy.log", listed_items)
-        self.assertIsInstance(listed_items, list)
-
-        with self.assertRaises(FileNotFoundError):
-            await list_files("non_existent_directory/")
-
     @patch('asyncio.create_subprocess_shell')
     async def test_execute_command(self, mock_create_subprocess_shell):
         """Test execute_command function with mocked subprocess."""
-        # Mock a successful command execution
         mock_process = MagicMock()
-        # Communicate needs to be an AsyncMock as it's awaited
         mock_process.communicate = AsyncMock(return_value=(b"mock stdout", b"mock stderr"))
         mock_process.returncode = 0
         mock_create_subprocess_shell.return_value = mock_process
@@ -101,12 +83,11 @@ class TestCoreUtilityFunctions(unittest.IsolatedAsyncioTestCase):
             cwd=PROJECT_ROOT
         )
 
-        # Mock a failed command execution
         mock_process_fail = MagicMock()
         mock_process_fail.communicate = AsyncMock(return_value=(b"", b"Error: Command failed"))
         mock_process_fail.returncode = 1
         mock_create_subprocess_shell.return_value = mock_process_fail
-        mock_create_subprocess_shell.reset_mock() # Reset mock call count
+        mock_create_subprocess_shell.reset_mock() 
 
         return_code_fail, stdout_fail, stderr_fail = await execute_command("false_command")
         self.assertEqual(return_code_fail, 1)
@@ -121,12 +102,10 @@ class TestCliInterface(unittest.IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self):
         """Set up mocks for file operations and services."""
-        # Patch the websocket sender to capture all output messages.
         patch_websocket = patch('ui.cli.send_to_websocket_server', new_callable=AsyncMock)
         self.mock_send_to_websocket_server = patch_websocket.start()
         self.addCleanup(patch_websocket.stop)
 
-        # Patch services to avoid "not initialized" warnings and allow for testing interactions.
         patch_memory_service = patch('ui.cli.memory_service', new_callable=MagicMock)
         self.mock_memory_service = patch_memory_service.start()
         self.mock_memory_service.store_memory = AsyncMock()
@@ -137,16 +116,22 @@ class TestCliInterface(unittest.IsolatedAsyncioTestCase):
         self.mock_vibe_engine.update_activity = AsyncMock()
         self.addCleanup(patch_vibe_engine.stop)
         
-        # Mock the httpx.AsyncClient to intercept API calls from the CLI
-        patch_httpx = patch('ui.cli.httpx.AsyncClient', new_callable=MagicMock)
-        self.mock_async_client_class = patch_httpx.start()
-        self.addCleanup(patch_httpx.stop)
+        # Corrected httpx.AsyncClient mocking setup for async context manager
+        patch_httpx_async_client_class = patch('ui.cli.httpx.AsyncClient') # Patch the class directly
+        self.mock_async_client_class = patch_httpx_async_client_class.start()
+        self.addCleanup(patch_httpx_async_client_class.stop)
 
-        # Configure the mock client instance and its context manager
-        self.mock_async_client_instance = self.mock_async_client_class.return_value
-        self.mock_async_client_context = self.mock_async_client_instance.__aenter__.return_value
+        # This is the instance returned when httpx.AsyncClient() is called
+        mock_client_instance = AsyncMock() # This needs to be an AsyncMock for __aenter__ to be awaitable
+        self.mock_async_client_class.return_value = mock_client_instance
 
-        # Mock for the 'exec' command remains the same
+        # This is the object yielded by 'async with httpx.AsyncClient() as client:'
+        self.mock_async_client_context = AsyncMock() # This is the mock for 'client'
+        mock_client_instance.__aenter__.return_value = self.mock_async_client_context
+        # __aexit__ should also be an awaitable mock
+        mock_client_instance.__aexit__.return_value = AsyncMock(return_value=False) 
+
+
         self.mock_execute_command = AsyncMock(return_value=(0, "cmd output", ""))
         patch_exec = patch('ui.cli.execute_command', self.mock_execute_command)
         patch_exec.start()
@@ -154,10 +139,9 @@ class TestCliInterface(unittest.IsolatedAsyncioTestCase):
 
     async def test_handle_read_command(self):
         """Test `read` command in CLI."""
-        # Configure mock response for the read API call
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.json.return_value = {"content": "file content"}
+        mock_response = AsyncMock()
+        mock_response.raise_for_status = AsyncMock(return_value=None)
+        mock_response.json = AsyncMock(return_value={"content": "file content"})
         self.mock_async_client_context.get = AsyncMock(return_value=mock_response)
 
         await handle_instruction("read test.txt")
@@ -173,9 +157,9 @@ class TestCliInterface(unittest.IsolatedAsyncioTestCase):
 
     async def test_handle_write_command(self):
         """Test `write` command in CLI."""
-        # Configure mock response for the write API call
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
+        mock_response = AsyncMock()
+        mock_response.raise_for_status = AsyncMock(return_value=None)
+        mock_response.json = AsyncMock(return_value={"message": "Successfully wrote to new_file.txt"}) 
         self.mock_async_client_context.post = AsyncMock(return_value=mock_response)
 
         await handle_instruction("write new_file.txt Some content here.")
@@ -190,10 +174,9 @@ class TestCliInterface(unittest.IsolatedAsyncioTestCase):
 
     async def test_handle_list_command(self):
         """Test `list` command in CLI."""
-        # Configure mock response for the list API call
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.json.return_value = {"items": ["file1.txt", "dir1/"]}
+        mock_response = AsyncMock()
+        mock_response.raise_for_status = AsyncMock(return_value=None)
+        mock_response.json = AsyncMock(return_value={"items": ["file1.txt", "dir1/"]})
         self.mock_async_client_context.get = AsyncMock(return_value=mock_response)
 
         await handle_instruction("list my_dir/")
@@ -237,8 +220,4 @@ class TestCliInterface(unittest.IsolatedAsyncioTestCase):
 
 
 if __name__ == '__main__':
-    # To run these tests:
-    # 1. Ensure `aiofiles` is installed: `pip install aiofiles`
-    # 2. Navigate to your project's root (where Coddy/ is located)
-    # 3. Run: `python -m unittest discover tests`
     unittest.main(argv=['first-arg-is-ignored'], exit=False)

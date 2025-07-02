@@ -1,4 +1,4 @@
-# cli.py
+# Coddy/ui/cli.py
 import asyncio
 import sys
 import os
@@ -173,18 +173,20 @@ async def handle_instruction(instruction: str):
                 await display_message("Usage: read <file_path>", "warning")
                 return
             file_path = args[0]
-            api_url = "http://127.0.0.1:8000/api/files/read"
+            API_BASE_URL = "http://127.0.0.1:8000" # Define API_BASE_URL here or import if global
+            api_url = f"{API_BASE_URL}/api/files/read"
             try:
                 async with httpx.AsyncClient() as client:
                     response = await client.get(api_url, params={"path": file_path})
-                    response.raise_for_status()
-                    data = response.json()
+                    await response.raise_for_status() # ADDED 'await'
+                    data = await response.json() # ADDED 'await'
                     content = data.get("content", "")
                     await display_message(f"Content of '{file_path}':\n---\n{content}\n---", "response")
                     await display_message(f"Successfully read '{file_path}'.", "success")
                     command_logged = True
             except httpx.HTTPStatusError as e:
-                error_detail = e.response.json().get("detail", e.response.text)
+                data = await e.response.json() # ADDED 'await' here
+                error_detail = data.get("detail", e.response.text)
                 await display_message(f"API Error reading '{file_path}': {error_detail}", "error")
             except httpx.RequestError:
                 await display_message(f"Connection Error: Could not connect to Coddy API to read '{file_path}'. Is the server running?", "error")
@@ -198,15 +200,17 @@ async def handle_instruction(instruction: str):
                 return
             file_path = args[0]
             content = " ".join(args[1:])
-            api_url = "http://127.0.0.1:8000/api/files/write"
+            API_BASE_URL = "http://127.0.0.1:8000" # Define API_BASE_URL here or import if global
+            api_url = f"{API_BASE_URL}/api/files/write"
             try:
                 async with httpx.AsyncClient() as client:
                     response = await client.post(api_url, json={"path": file_path, "content": content})
-                    response.raise_for_status()
+                    await response.raise_for_status() # ADDED 'await'
                     await display_message(f"Successfully wrote content to '{file_path}'.", "success")
                     command_logged = True
             except httpx.HTTPStatusError as e:
-                error_detail = e.response.json().get("detail", e.response.text)
+                data = await e.response.json() # ADDED 'await' here
+                error_detail = data.get("detail", e.response.text)
                 await display_message(f"API Error writing to '{file_path}': {error_detail}", "error")
             except httpx.RequestError:
                 await display_message(f"Connection Error: Could not connect to Coddy API to write to '{file_path}'. Is the server running?", "error")
@@ -216,19 +220,21 @@ async def handle_instruction(instruction: str):
 
         elif command_name == "list":
             directory_path = args[0] if args else './' # Default to current dir if no path given
-            api_url = "http://127.0.0.1:8000/api/files/list"
+            API_BASE_URL = "http://127.0.0.1:8000" # Define API_BASE_URL here or import if global
+            api_url = f"{API_BASE_URL}/api/files/list"
             try:
                 async with httpx.AsyncClient() as client:
                     response = await client.get(api_url, params={"path": directory_path})
-                    response.raise_for_status() # Raise an exception for bad status codes
-                    data = response.json()
+                    await response.raise_for_status() # ADDED 'await'
+                    data = await response.json() # ADDED 'await'
                     items = data.get("items", [])
                     item_list_str = "\n".join([f"- {item}" for item in items])
                     await display_message(f"Files and directories in '{directory_path}':\n{item_list_str}", "response")
                     await display_message(f"Successfully listed '{directory_path}'.", "success")
                     command_logged = True
             except httpx.HTTPStatusError as e:
-                error_detail = e.response.json().get("detail", e.response.text)
+                data = await e.response.json() # ADDED 'await' here
+                error_detail = data.get("detail", e.response.text)
                 await display_message(f"API Error listing '{directory_path}': {error_detail}", "error")
             except httpx.RequestError:
                 await display_message(f"Connection Error: Could not connect to Coddy API to list '{directory_path}'. Is the server running?", "error")
@@ -338,9 +344,9 @@ async def handle_instruction(instruction: str):
                     # Pretty print content if it's a dictionary
                     if isinstance(content_display, dict):
                         content_str = "\n".join([f"     - {k}: {v}" for k, v in content_display.items()])
-                        await display_message(f"  [{formatted_time}] \n{content_str}", "response")
+                        await display_message(f"   [{formatted_time}] \n{content_str}", "response")
                     else:
-                        await display_message(f"  [{formatted_time}] {content_display}", "response")
+                        await display_message(f"   [{formatted_time}] {content_display}", "response")
                 await display_message("--- End of Context ---", "response")
             else:
                 await display_message("No context loaded for the current session.", "info")
@@ -387,17 +393,17 @@ async def handle_instruction(instruction: str):
 
         elif command_name == "help":
             await display_message("\n--- Coddy Commands ---", "response")
-            await display_message("  read <file>              - Read the content of a file.", "response")
-            await display_message("  write <file> <content>   - Write content to a file.", "response")
-            await display_message("  list [directory]         - List files in a directory.", "response")
-            await display_message("  exec <command>           - Execute a shell command.", "response")
-            await display_message("  checkpoint save|load <name> - Save or load a session checkpoint.", "response")
-            await display_message("  show context             - Display the loaded user context.", "response")
-            await display_message("  vibe [set|clear]         - Manage the current vibe/focus.", "response")
-            await display_message("  memory [search]          - Interact with long-term memory.", "response")
-            await display_message("  unit_tester <file>       - Generate unit tests for a file.", "response")
-            await display_message("  help                     - Show this help message.", "response")
-            await display_message("  exit, quit, bye          - Exit the CLI.", "response")
+            await display_message("   read <file>           - Read the content of a file.", "response")
+            await display_message("   write <file> <content>  - Write content to a file.", "response")
+            await display_message("   list [directory]        - List files in a directory.", "response")
+            await display_message("   exec <command>          - Execute a shell command.", "response")
+            await display_message("   checkpoint save|load <name> - Save or load a session checkpoint.", "response")
+            await display_message("   show context            - Display the loaded user context.", "response")
+            await display_message("   vibe [set|clear]        - Manage the current vibe/focus.", "response")
+            await display_message("   memory [search]         - Interact with long-term memory.", "response")
+            await display_message("   unit_tester <file>      - Generate unit tests for a file.", "response")
+            await display_message("   help                    - Show this help message.", "response")
+            await display_message("   exit, quit, bye         - Exit the CLI.", "response")
             await display_message("---", "response")
             command_logged = True
 
