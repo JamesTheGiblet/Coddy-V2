@@ -1,0 +1,46 @@
+{
+    "name": "coddy-extension",
+    "displayName": "Coddy Extension",
+    "description": "A proof-of-concept VS Code extension for Coddy commands.",
+    "version": "0.0.1",
+    "publisher": "Praximous",
+    "engines": {
+      "vscode": "^1.80.0"
+    },
+    "categories": [
+      "Other"
+    ],
+    "activationEvents": [
+      "onCommand:coddy.helloWorld",
+      "onCommand:coddy.readFile"
+    ],
+    "main": "./extension.js",
+    "contributes": {
+      "commands": [
+        {
+          "command": "coddy.helloWorld",
+          "title": "Coddy: Hello World"
+        },
+        {
+          "command": "coddy.readFile",
+          "title": "Coddy: Read File"
+        }
+      ]
+    },
+    "scripts": {
+      "lint": "eslint .",
+      "pretest": "npm run lint",
+      "test": "node ./test/runTests.js"
+    },
+    "devDependencies": {
+      "@types/vscode": "^1.80.0",
+      "@types/mocha": "^10.0.1",
+      "@types/node": "18.x",
+      "eslint": "^8.40.0",
+      "glob": "^8.1.0",
+      "mocha": "^10.2.0",
+      "typescript": "^5.0.4",
+      "@vscode/test-electron": "^2.3.2"
+    }
+  }
+  
