@@ -348,9 +348,9 @@ These are the core pillars to be established from the very beginning, ensuring a
 **Tasks:**
 
 **Create VS Code Extension (Proof of Concept):**
-     [ ] Develop a basic extension to bring Coddy's commands directly into the VS Code interface.
+     [x] Develop a basic extension to bring Coddy's commands directly into the VS Code interface.
 **Implement Shell Alias & Function Wrappers:**
-     [ ] Create convenient shell aliases and functions to make invoking Coddy's features quicker from the terminal.
+     [x] Create convenient shell aliases and functions to make invoking Coddy's features quicker from the terminal.
 **Build Filesystem Watcher with Proactive Suggestions:**
      [ ] Implement a background process that monitors file changes and offers contextual help or automation. This should be an asynchronous process.
 **Reflect and Evaluate Phase Outcomes:**
