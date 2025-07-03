@@ -63,19 +63,21 @@ async def test_cli_read_file_not_found(mock_display_message, mock_httpx_async_cl
 
     # Create a specific mock response object to be used inside the HTTPStatusError
     # This mock will have an awaitable .json() method
-    mock_error_response_in_exception = AsyncMock(status_code=404)
-    mock_error_response_in_exception.json = AsyncMock(return_value={"detail": "File not found: non_existent.txt"})
+    mock_error_response_in_exception = MagicMock(spec=httpx.Response)
+    mock_error_response_in_exception.status_code = 404
+    # The .json() method on an httpx.Response is sync, not async
+    mock_error_response_in_exception.json = MagicMock(return_value={"detail": "File not found: non_existent.txt"})
     
     # Configure the response returned by client.get for this error scenario
-    mock_response_from_get_call = AsyncMock() # This is the immediate response from client.get
+    # The response object itself is synchronous, even if returned from an async method.
+    mock_response_from_get_call = MagicMock(spec=httpx.Response)
+    mock_response_from_get_call.status_code = 404
     # Set its raise_for_status to raise the HTTPStatusError with our custom mock_error_response
-    mock_response_from_get_call.raise_for_status = AsyncMock(side_effect=httpx.HTTPStatusError(
+    mock_response_from_get_call.raise_for_status.side_effect = httpx.HTTPStatusError(
         "Not Found", 
         request=httpx.Request("GET", "http://example.com"), 
         response=mock_error_response_in_exception # Pass the specially crafted mock here
-    ))
-    # It also needs a .json() method if cli.py tries to access it before raise_for_status
-    mock_response_from_get_call.json = AsyncMock(return_value={}) # Provide a placeholder
+    )
 
     # Use the manually configured context manager instance for get
     mock_context_manager_instance.get.return_value = mock_response_from_get_call 

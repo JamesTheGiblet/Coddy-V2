@@ -6,26 +6,31 @@ from core.file_watcher import ProactiveEventHandler
 
 class TestWatcherPlugin(unittest.TestCase):
 
-    def test_proactive_event_handler_dispatches_async_task(self):
+    @patch('core.file_watcher.asyncio.run_coroutine_threadsafe')
+    def test_proactive_event_handler_dispatches_async_task(self, mock_run_coroutine_threadsafe):
         """
         Tests that the event handler correctly dispatches a coroutine 
         to the event loop upon a file modification event.
         """
         mock_loop = MagicMock()
         handler = ProactiveEventHandler(loop=mock_loop)
-        
+
         # Mock the async handler method to avoid actual execution
         handler.handle_file_modification = AsyncMock()
 
-        mock_event = FileModifiedEvent(src_path="/fake/path/to/file.py")
-        
+        # Use a mock event with a spec to better emulate the real object
+        mock_event = MagicMock(spec=FileModifiedEvent, is_directory=False, src_path="/fake/path/to/file.py")
         handler.on_modified(mock_event)
 
         # Assert that the async task was submitted to the event loop
-        mock_loop.run_coroutine_threadsafe.assert_called_once()
-        
-        coro = mock_loop.run_coroutine_threadsafe.call_args[0][0]
-        self.assertEqual(coro.__name__, 'handle_file_modification')
+        mock_run_coroutine_threadsafe.assert_called_once()
+
+        # Check that the mock was called to create the coroutine with the correct path
+        handler.handle_file_modification.assert_called_once_with("/fake/path/to/file.py")
+
+        # And check that the correct loop was passed to run_coroutine_threadsafe
+        _coro, loop = mock_run_coroutine_threadsafe.call_args[0]
+        self.assertIs(loop, mock_loop)
 
     @patch('core.file_watcher.logging')
     def test_handle_file_modification_logs_correctly(self, mock_logging):

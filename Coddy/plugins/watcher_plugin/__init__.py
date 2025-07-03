@@ -24,4 +24,4 @@ def watch(path):
 
 def register():
     """Registers the 'watch' command."""
-    return watch
+    return [watch]

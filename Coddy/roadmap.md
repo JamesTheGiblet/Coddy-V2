@@ -304,7 +304,7 @@ These are the core pillars to be established from the very beginning, ensuring a
 **Create Asynchronous Task Assignment Command:**
      [ ] Implemented the `todo add "@user" "<description>"` and `todo list` CLI commands, allowing tasks to be assigned and viewed in a shared Redis-backed list. Ensure Redis interactions are asynchronous.
 **Develop Shared Team Checkpoints:**
-     [ ] Enhanced the `checkpoint save` and `checkpoint load` commands to optionally use Redis, allowing teams to share and restore specific Giblet session states.
+     [ ] Enhanced the `checkpoint save` and `checkpoint load` commands to optionally use Redis, allowing teams to share and restore specific Coddy session states.
 **Reflect and Evaluate Phase Outcomes:**
      [ ] Test collaborative features for reliability and ease of use.
 
@@ -323,7 +323,7 @@ These are the core pillars to be established from the very beginning, ensuring a
 **Tasks:**
 
 **Build Core Service API (FastAPI):**
-     [x] Established a robust FastAPI backend, exposing core Giblet functionalities like roadmap viewing and task management through well-defined API endpoints. All endpoints should be asynchronous.
+     [x] Established a robust FastAPI backend, exposing core Coddy functionalities like roadmap viewing and task management through well-defined API endpoints. All endpoints should be asynchronous.
 **Refactor CLI and Dashboard as API Clients:**
      [x] The CLI's `roadmap` command was refactored to consume data from the new API.
      [x] Other CLI commands (e.g., file operations) are updated to use the API.
@@ -339,11 +339,11 @@ These are the core pillars to be established from the very beginning, ensuring a
 * **My Evaluation:** The need for these tests is critical. The purpose is to ensure Coddy's core functionality is reliably exposed via an API and can be easily deployed. This phase transitions Coddy from a standalone application to a scalable service, making foundational API stability and containerization crucial for future growth and cloud deployment.
 
 ---
-
+##### REVIEW #####
 ### Phase 13: 💻 The Environment Integrator (IDE & Shell)
 
 **Goal:** Deepen Coddy’s integration with developer environments by providing seamless access to its features within IDEs and shells.
-**Success:** Users can invoke Giblet commands directly from VS Code, use convenient shell shortcuts, and benefit from proactive suggestions triggered by file changes, resulting in a smoother, more context-aware development workflow.
+**Success:** Users can invoke Coddy commands directly from VS Code, use convenient shell shortcuts, and benefit from proactive suggestions triggered by file changes, resulting in a smoother, more context-aware development workflow.
 
 **Tasks:**
 
@@ -354,7 +354,7 @@ These are the core pillars to be established from the very beginning, ensuring a
 **Build Filesystem Watcher with Proactive Suggestions:**
      [x] Implement a background process that monitors file changes and offers contextual help or automation. This should be an asynchronous process.
 **Reflect and Evaluate Phase Outcomes:**
-     [ ] Assess how well Coddy integrates into typical developer workflows.
+     [x] Assess how well Coddy integrates into typical developer workflows.
 
 #### AI-Guided Quality & Value Evaluation: Phase 13
 
@@ -366,16 +366,16 @@ These are the core pillars to be established from the very beginning, ensuring a
 ### Phase 14: 🤖 The Autonomous Agent
 
 **Goal:** Transform Coddy into a deeply integrated development companion by embedding its features directly into popular developer environments and enabling advanced autonomous capabilities.
-**Success:** Users can access Giblet commands and automation from within VS Code, the terminal, and through proactive file monitoring, enabling seamless, context-aware assistance throughout their workflow. The agent can plan, execute multi-step commands, and self-correct based on test failures.
+**Success:** Users can access Coddy commands and automation from within VS Code, the terminal, and through proactive file monitoring, enabling seamless, context-aware assistance throughout their workflow. The agent can plan, execute multi-step commands, and self-correct based on test failures.
 
 **Tasks:**
 
 **Develop a Task Decomposition Engine (`task_decomposition_engine.py`):**
-     [ ] Enable Giblet to break down complex user requests into smaller, manageable sub-tasks.
+     [ ] Enable Coddy to break down complex user requests into smaller, manageable sub-tasks.
 **Implement a Multi-Step Command Execution Loop:**
-     [ ] Allow Giblet to execute a sequence of commands autonomously to achieve a larger goal.
+     [ ] Allow Coddy to execute a sequence of commands autonomously to achieve a larger goal.
 **Add Self-Correction Logic based on Test Failures (`command_executor.py`):**
-     [ ] Empower Giblet to attempt to fix its own generated code if automated tests fail.
+     [ ] Empower Coddy to attempt to fix its own generated code if automated tests fail.
 **Integrate Task Decomposition, Command Execution, and Self-Correction (`self_correction.py`):**
      [ ] Orchestrate these components to enable a more autonomous agent workflow.
 **Reflect and Evaluate Phase Outcomes (`autonomous_agent.py`):**
@@ -548,7 +548,7 @@ These are the core pillars to be established from the very beginning, ensuring a
      [ ] Implement CLI Commands for LLM Provider Configuration: Implemented `llm status|use|config` commands in the CLI.
      [ ] Add Dashboard UI for LLM Configuration: Added UI elements in the Dashboard's "Profile" tab to manage LLM provider selection and settings.
 **Add "Auto-Recognition" of Model Capabilities (Stretch Goal) via "Capability Gauntlet":**
-     [ ] Investigate methods for Giblet to infer capabilities of the selected LLM and adapt its strategies accordingly.
+     [ ] Investigate methods for Coddy to infer capabilities of the selected LLM and adapt its strategies accordingly.
      [ ] Design the "Capability Gauntlet" System: Defined the concept of a test suite (`data/gauntlet.json`), a `CapabilityAssessor` module, and CLI/UI integration.
      [ ] Define Initial Capability Set and Investigation Plan.
      [ ] Implement `LLMCapabilities` Class and Predefined Map (`data/model_capabilities.json`).
@@ -586,7 +586,7 @@ These are the core pillars to be established from the very beginning, ensuring a
 **Integrate `ProjectContextualizer` into Core LLM Interactions:**
      [ ] Update `IdeaSynthesizer` and `CodeGenerator` to use `ProjectContextualizer` to augment prompts.
 **Introduce "Just-in-Time" Proactive Suggestions in UI/CLI:**
-     [ ] Enable Giblet to offer unsolicited but relevant suggestions or shortcuts based on the project context and user profile.
+     [ ] Enable Coddy to offer unsolicited but relevant suggestions or shortcuts based on the project context and user profile.
      [ ] Refactor `ProactiveLearner` to use live `UserProfile`.
      [ ] Implement Basic Just-in-Time Suggestion Display in CLI and Dashboard (e.g., Toasts).
 **Reflect and Evaluate Phase Outcomes:**
@@ -701,11 +701,11 @@ These are the core pillars to be established from the very beginning, ensuring a
 **Implement "Random Genesis" Mode:**
      [ ] Add a "🎲 Surprise Me" button to the Genesis UI that uses the `IdeaSynthesizer` to generate a random, weird project concept and feeds it into the Genesis pipeline.
 **Implement `vibe_engine.py` (Post-Genesis):**
-     [ ] Create the initial version of this engine. After a project is scaffolded, it will proactively suggest the first logical giblet command (e.g., "Project created. Would you like to focus on the first task in the roadmap?").
+     [ ] Create the initial version of this engine. After a project is scaffolded, it will proactively suggest the first logical Coddy command (e.g., "Project created. Would you like to focus on the first task in the roadmap?").
 
 #### AI-Guided Quality & Value Evaluation: Phase 25
 
-* **Tests Created:** Develop integration tests for "Random Genesis" mode, ensuring it correctly generates a concept and feeds it into the Genesis pipeline. Test the post-scaffolding `vibe_engine` suggestion, ensuring the correct giblet command is proposed based on the newly generated roadmap.
+* **Tests Created:** Develop integration tests for "Random Genesis" mode, ensuring it correctly generates a concept and feeds it into the Genesis pipeline. Test the post-scaffolding `vibe_engine` suggestion, ensuring the correct Coddy command is proposed based on the newly generated roadmap.
 * **My Evaluation:** The need for these tests is high. This phase polishes the "Genesis" experience and provides a seamless handover to the core coding workflow. The purpose is to ensure a delightful and intuitive transition for the user, reinforcing Coddy's role as a proactive companion.
 
 ---
@@ -741,12 +741,12 @@ These are the core pillars to be established from the very beginning, ensuring a
 
 ### Phase 27: 🤹 Coddy Clones & Vibe-Oriented Sync
 
-**Goal:** Expand Coddy’s ecosystem by introducing dedicated persona-driven clones (mini-Giblets) for focused tasks, isolated experimentation environments, and enhanced context-syncing mechanisms — all in service of your personal methodology and modular cognition philosophy.
+**Goal:** Expand Coddy’s ecosystem by introducing dedicated persona-driven clones (mini-Coddys) for focused tasks, isolated experimentation environments, and enhanced context-syncing mechanisms — all in service of your personal methodology and modular cognition philosophy.
 **Success:** Coddy can coordinate with named clone agents like Fixy, Docster, and Critty; conduct isolated trials in Lab Mode; log change digests with purpose; and refine itself via mini self-contained iteration loops per phase. Coddy also captures README clarification flows and learns your vibe from edit-feedback cycles.
 
 **Tasks:**
 **Persona-Specific Coddy Clones**
-     [ ] Design plugin architecture for spawning mini-Giblets (Fixy, Docster, Critty) with scoped memory/context.
+     [ ] Design plugin architecture for spawning mini-Coddys (Fixy, Docster, Critty) with scoped memory/context.
      [ ] Define reporting protocol for clones to communicate output to Coddy Core.
      [ ] Create clone profiles with unique personas, prompts, and logging styles.
      [ ] Reflect on collaboration model: Should Coddy orchestrate clone selection or respond to user tags?
