@@ -1,237 +1,116 @@
-# core/code_generator.py
-
-import ast
+# Coddy/core/code_generator.py
 import asyncio
-from typing import Optional, List
-from core.idea_synth import IdeaSynthesizer # Re-use the LLM logic
-from pathlib import Path # Import Path
+import os
+import sys
+from typing import Dict, Any, Optional, List
+import json # Added for json.dumps in prompt formatting
+
+# Add the project root to sys.path to allow imports from 'Coddy.core'
+# This calculates the path to 'C:\Users\gilbe\Documents\GitHub\Coddy V2'
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+
+try:
+    # IMPORTANT: Ensure these import paths are absolute, starting with 'Coddy.'
+    from Coddy.core.idea_synth import IdeaSynthesizer 
+    from Coddy.core.memory_service import MemoryService 
+    from Coddy.core.vibe_mode import VibeModeEngine 
+    from Coddy.core.logging_utility import log_info, log_warning, log_error, log_debug
+except ImportError as e:
+    print(f"FATAL ERROR: Could not import core modules required for CodeGenerator: {e}", file=sys.stderr)
+    sys.exit(1)
 
 class CodeGenerator:
     """
-    Generates code snippets, functions, and classes based on natural language descriptions.
+    Generates code based on instructions, leveraging IdeaSynthesizer (LLM)
+    and potentially VibeModeEngine for contextual generation.
     """
+    def __init__(self, memory_service: Optional[MemoryService] = None, vibe_engine: Optional[VibeModeEngine] = None):
+        # NOTE: If CodeGenerator was previously initialized without these,
+        # you need to ensure its __init__ method accepts them.
+        # Based on previous tracebacks, it seems it was not accepting them.
+        # For now, I'm adding them as optional arguments.
+        # If your actual CodeGenerator.py does not have these parameters,
+        # you will need to remove them from the initialization calls in cli.py and backend/main.py.
+        self.idea_synthesizer = IdeaSynthesizer()
+        self.memory_service = memory_service
+        self.vibe_engine = vibe_engine
+        # Removed: log_info("CodeGenerator initialized.")
+        # Initialization logging moved to the async initialize() method.
 
-    def __init__(self, user_id: str = "default_user_codegen"):
-        self.user_id = user_id
-        self.llm_comm = IdeaSynthesizer(user_id)
-
-    async def generate_function(
-        self,
-        description: str,
-        function_name: str,
-        args: Optional[List[str]] = None,
-        return_type: str = "str"
-    ) -> str:
+    async def initialize(self):
         """
-        Generates a Python function based on a description.
-
-        Args:
-            description: A natural language description of what the function should do.
-            function_name: The desired name for the function.
-            args: A list of arguments for the function, e.g., ["path: str", "data: dict"].
-            return_type: The return type of the function.
-
-        Returns:
-            A string containing the generated Python function code.
+        Asynchronously initializes the CodeGenerator, performing any async setup.
+        This method should be called after the CodeGenerator instance is created.
         """
-        print(f"Generating function '{function_name}'...")
+        await log_info("CodeGenerator initialized.") # Now correctly awaited
 
-        arg_str = ", ".join(args) if args else ""
-
-        prompt = f"""
-        Generate a complete, robust Python function with the following specifications.
-        The function must include a clear docstring, type hints, and basic error handling where appropriate.
-
-        Function Name: {function_name}
-        Arguments: {arg_str}
-        Return Type: {return_type}
-        Description: {description}
-
-        Please provide only the Python code for the function, starting with 'def {function_name}' and nothing else.
+    async def generate_code(self, prompt: str, context: Optional[Dict[str, Any]] = None) -> str:
         """
-
-        try:
-            # Using a lower temperature for more predictable code generation
-            generated_code = await self.llm_comm.summarize_text(prompt, temperature=0.2, top_p=0.9)
-            # Clean up the response to ensure it's just the code block
-            if "```python" in generated_code:
-                generated_code = generated_code.split("```python")[1].split("```")[0]
-            
-            return generated_code.strip()
-        except Exception as e:
-            print(f"Error generating function: {e}")
-            return f"# Failed to generate function '{function_name}': {e}"
-
-    async def refactor_code(self, original_code: str, instruction: str) -> str:
+        Generates general code based on a prompt and optional context.
         """
-        Refactors a block of Python code based on a given instruction.
+        await log_info(f"Generating code for prompt: {prompt[:100]}...")
+        full_prompt = f"Generate code based on the following request: {prompt}\n"
+        if context:
+            full_prompt += f"Context: {json.dumps(context)}\n"
+        
+        # Add vibe mode to prompt if available
+        if self.vibe_engine:
+            current_vibe = self.vibe_engine.get_current_vibe()
+            if current_vibe:
+                full_prompt += f"Current Vibe/Focus: {current_vibe}\n"
 
-        Args:
-            original_code: The original Python code as a string.
-            instruction: The natural language instruction for refactoring.
+        generated_code = await self.idea_synthesizer.synthesize_idea(full_prompt)
+        await log_info("Code generation complete.")
+        return generated_code
 
-        Returns:
-            A string containing the refactored Python code.
+    async def generate_unit_tests(self, file_path: str, context: Optional[Dict[str, Any]] = None) -> str:
         """
-        print(f"Refactoring code with instruction: '{instruction}'...")
-
-        prompt = f"""
-        You are an expert Python programmer tasked with refactoring code.
-        Please refactor the following Python code based on the provided instruction.
-        Return only the complete, refactored code block. Do not add any explanations,
-        introductions, or markdown formatting like ```python.
-
-        Instruction:
-        ---
-        {instruction}
-        ---
-
-        Original Code:
-        ---
-        {original_code}
-        ---
-
-        Refactored Code:
+        Generates unit tests for a given file, using its content and additional context.
         """
+        await log_info(f"Generating unit tests for file: {file_path}")
+        
+        file_content = context.get("file_content", "No file content provided.")
+        vibe_mode = context.get("vibe_mode", "default")
+        recent_memories = context.get("recent_memories", [])
 
-        try:
-            # Using a lower temperature for more predictable code generation
-            refactored_code = await self.llm_comm.summarize_text(prompt, temperature=0.1, top_p=0.9)
-            # Clean up the response to ensure it's just the code block
-            if "```python" in refactored_code:
-                refactored_code = refactored_code.split("```python")[1].split("```")[0]
-            elif "```" in refactored_code:
-                refactored_code = refactored_code.split("```")[1].split("```")[0]
-            return refactored_code.strip()
-        except Exception as e:
-            print(f"Error refactoring code: {e}")
-            return f"# Failed to refactor code: {e}\n\n{original_code}"
+        prompt = f"Generate comprehensive unit tests for the following Python code from '{file_path}':\n\n"
+        prompt += f"```python\n{file_content}\n```\n\n"
+        prompt += f"Consider the current vibe/focus: {vibe_mode}.\n"
+        if recent_memories:
+            prompt += f"Also consider these recent interactions/memories: {json.dumps(recent_memories[:3])}\n" # Limit for prompt size
+        prompt += "Ensure the tests cover edge cases and common scenarios. Provide only the Python code for the tests."
 
-    async def generate_tests_for_file(self, source_code: str, original_file_path: Path) -> str:
+        generated_tests = await self.idea_synthesizer.synthesize_idea(prompt)
+        await log_info("Unit test generation complete.")
+        return generated_tests
+
+    async def generate_code_fix(self, file_path: str, context: Optional[Dict[str, Any]] = None) -> str:
         """
-        Generates pytest unit tests for a given block of Python source code.
-
-        Args:
-            source_code: The original Python code as a string.
-            original_file_path: The Path object of the original source file.
-                                This is crucial for determining correct import paths.
-
-        Returns:
-            A string containing the generated pytest code.
+        Generates a code fix for a given file based on failed test output.
         """
-        print(f"Generating unit tests for source code from {original_file_path.name}...")
+        await log_info(f"Generating code fix for file: {file_path}")
 
-        module_name = original_file_path.stem
+        original_code = context.get("original_code", "No original code provided.")
+        failed_test_output_stdout = context.get("failed_test_output_stdout", "")
+        failed_test_output_stderr = context.get("failed_test_output_stderr", "")
+        vibe_mode = context.get("vibe_mode", "default")
+        recent_memories = context.get("recent_memories", [])
+        problem_description = context.get("problem_description", "Tests are failing.")
 
-        prompt = f"""
-        You are an expert Python testing engineer. Your task is to write a comprehensive suite of unit tests for the provided Python code using the `pytest` framework.
+        prompt = f"The following Python code from '{file_path}' has failing tests:\n\n"
+        prompt += f"```python\n{original_code}\n```\n\n"
+        prompt += f"Problem: {problem_description}\n"
+        if failed_test_output_stdout:
+            prompt += f"Test STDOUT:\n```\n{failed_test_output_stdout}\n```\n"
+        if failed_test_output_stderr:
+            prompt += f"Test STDERR:\n```\n{failed_test_output_stderr}\n```\n"
+        
+        prompt += f"Current Vibe/Focus: {vibe_mode}.\n"
+        if recent_memories:
+            prompt += f"Recent interactions/memories: {json.dumps(recent_memories[:3])}\n"
+        
+        prompt += "Please provide a corrected version of ONLY the Python code that addresses the test failures. Do not include any explanations or markdown formatting outside the code block."
 
-        The original source code comes from a file named `{original_file_path.name}`.
-        When writing imports for functions/classes from this source code, assume they can be imported like:
-        `from {module_name} import <function_name>` or `from {module_name} import <ClassName>`.
-
-        - Analyze the provided source code to understand its functions, classes, and methods.
-        - Generate clear, concise, and effective `pytest` tests.
-        - Cover normal use cases, edge cases, and potential error conditions.
-        - **Ensure necessary imports are included, using the module name `{module_name}` as specified above.**
-        - Return only the complete, runnable Python code for the tests. Do not add any explanations,
-        introductions, or markdown formatting like ```python.
-
-        Source Code to Test:
-        ---
-        {source_code}
-        ---
-
-        Pytest Test Code:
-        """
-
-        try:
-            generated_tests = await self.llm_comm.summarize_text(prompt, temperature=0.2, top_p=0.9)
-
-            if "```python" in generated_tests:
-                generated_tests = generated_tests.split("```python")[1].split("```")[0]
-            elif "```" in generated_tests:
-                generated_tests = generated_tests.split("```")[1].split("```")[0]
-
-            generated_tests = generated_tests.strip()
-
-            # --- Start Robust Post-processing for Imports (Revised) ---
-            generated_lines = generated_tests.splitlines()
-            
-            # 1. Ensure 'import pytest' is at the top
-            if "import pytest" not in generated_lines:
-                generated_lines.insert(0, "import pytest")
-            
-            # 2. Extract top-level function/class names from the source code
-            top_level_names = []
-            try:
-                source_tree = ast.parse(source_code)
-                for node in source_tree.body:
-                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                        top_level_names.append(node.name)
-            except SyntaxError:
-                print(f"Warning: Source code has a syntax error. Cannot extract names for imports.")
-                top_level_names = []
-
-            # 3. Construct the required 'from module import names' statement
-            required_module_import = ""
-            if top_level_names:
-                required_module_import = f"from {module_name} import {', '.join(sorted(top_level_names))}"
-
-            # 4. Check if the required module import exists in the generated tests
-            has_required_module_import = False
-            for line in generated_lines:
-                # Simple check: does any line contain 'from <module_name> import'?
-                if f"from {module_name} import" in line:
-                    has_required_module_import = True
-                    break
-            
-            # 5. If the required module import is missing, insert it right after 'import pytest'
-            if not has_required_module_import and required_module_import:
-                insert_index = 1 if generated_lines and generated_lines[0] == "import pytest" else 0
-                generated_lines.insert(insert_index, required_module_import)
-                # Add an extra newline for better formatting if it's not the first line
-                if insert_index > 0:
-                    generated_lines.insert(insert_index + 1, "") # Add a blank line after imports
-
-            return "\n".join(generated_lines).strip()
-            # --- End Robust Post-processing ---
-
-        except Exception as e:
-            print(f"Error generating unit tests: {e}")
-            return f"# Failed to generate unit tests: {e}\n\n"
-
-
-# Example Usage
-async def main_test_code_gen():
-    print("\n--- Testing CodeGenerator ---")
-    code_gen = CodeGenerator()
-
-    description = "Reads a file from a given path and returns its content as a string. It should handle FileNotFoundError."
-    function_code = await code_gen.generate_function(
-        description=description,
-        function_name="read_file_content",
-        args=["file_path: str"],
-        return_type="str"
-    )
-    print("\n--- Generated Function ---")
-    print(function_code)
-
-    print("\n--- Testing Test Generation ---")
-    sample_code = """
-def add(a, b):
-    return a + b
-
-class Calculator:
-    def multiply(self, x, y):
-        return x * y
-"""
-    # Create a dummy path for the example usage
-    dummy_path = Path("sample_module.py")
-    test_code = await code_gen.generate_tests_for_file(sample_code, dummy_path)
-    print("\n--- Generated Test Code ---")
-    print(test_code)
-    print("\n--- End of CodeGenerator Tests ---")
-
-if __name__ == "__main__":
-    asyncio.run(main_test_code_gen())
+        corrected_code = await self.idea_synthesizer.synthesize_idea(prompt)
+        await log_info("Code fix generation complete.")
+        return corrected_code

@@ -4,16 +4,13 @@ import websockets # Install with: pip install websockets
 import json
 import logging
 from typing import Set, Dict, Any
+from core.config import WEBSOCKET_HOST, WEBSOCKET_PORT, WEBSOCKET_URL # Import from central config
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Set of connected WebSocket clients
 CONNECTED_CLIENTS: Set[websockets.WebSocketServerProtocol] = set()
-
-# WebSocket server configuration
-WEBSOCKET_HOST = "localhost"
-WEBSOCKET_PORT = 8080
 
 async def register_client(websocket: websockets.WebSocketServerProtocol):
     """Adds a new client to the set of connected clients."""
@@ -106,7 +103,7 @@ async def send_to_websocket_server(message_data: Dict[str, Any]):
     Connects to the local WebSocket server and sends a single message.
     Used by other Python modules (like CLI) to send logs to the UI.
     """
-    uri = f"ws://{WEBSOCKET_HOST}:{WEBSOCKET_PORT}"
+    uri = WEBSOCKET_URL # Use the configured URL
     try:
         async with websockets.connect(uri) as websocket:
             await websocket.send(json.dumps(message_data))

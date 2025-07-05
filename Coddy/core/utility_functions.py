@@ -2,7 +2,7 @@
 import os
 import asyncio
 import aiofiles # For asynchronous file I/O
-import subprocess # For executing external commands
+# Removed: import subprocess # No longer needed as execute_command is moved
 import sys
 
 # Define base project directory relative to where this script might be run
@@ -114,50 +114,7 @@ async def list_files(directory_path: str = './') -> list[str]:
         print(f"Error listing directory '{absolute_path}': {e}")
         raise
 
-async def execute_command(command: str, cwd: str = PROJECT_ROOT) -> tuple[int, str, str]:
-    """
-    Asynchronously executes a shell command.
-
-    Args:
-        command: The command string to execute.
-        cwd: The current working directory for the command. Defaults to project root.
-
-    Returns:
-        A tuple containing:
-        - The return code (int) of the command.
-        - The standard output (str) of the command.
-        - The standard error (str) of the command.
-
-    Raises:
-        subprocess.CalledProcessError: If the command returns a non-zero exit status.
-        Exception: For other errors during command execution.
-    """
-    try:
-        # Use asyncio.create_subprocess_shell for async execution
-        process = await asyncio.create_subprocess_shell(
-            command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=cwd
-        )
-        stdout, stderr = await process.communicate()
-
-        return_code = process.returncode
-        stdout_str = stdout.decode('utf-8').strip()
-        stderr_str = stderr.decode('utf-8').strip()
-
-        if return_code != 0:
-            print(f"Command '{command}' failed with exit code {return_code}")
-            print(f"STDOUT:\n{stdout_str}")
-            print(f"STDERR:\n{stderr_str}")
-            # Optionally raise an error for failed commands
-            # raise subprocess.CalledProcessError(return_code, command, stdout=stdout, stderr=stderr)
-
-        return return_code, stdout_str, stderr_str
-
-    except Exception as e:
-        print(f"Error executing command '{command}': {e}")
-        raise
+# Removed execute_command function as it has been moved to core/execution_manager.py
 
 # Example Usage (for testing the utility functions)
 async def main_test_utilities():
@@ -190,20 +147,8 @@ async def main_test_utilities():
     except Exception as e:
         print(f"List Files Test Failed: {e}")
 
-    # Test execute_command
-    print("\nExecuting 'ls -l' in project root:")
-    return_code, stdout, stderr = await execute_command('ls -l', cwd=PROJECT_ROOT)
-    print(f"Return Code: {return_code}")
-    print(f"STDOUT:\n{stdout}")
-    if stderr:
-        print(f"STDERR:\n{stderr}")
-
-    print("\nExecuting 'echo Hello from Coddy command!'")
-    return_code, stdout, stderr = await execute_command('echo Hello from Coddy command!')
-    print(f"Return Code: {return_code}")
-    print(f"STDOUT:\n{stdout}")
-    if stderr:
-        print(f"STDERR:\n{stderr}")
+    # Note: execute_command test removed as the function is no longer in this file.
+    # You can test execute_command via the ExecutionManager or directly from its new location.
 
     print("\n--- End of Utility Function Tests ---")
 

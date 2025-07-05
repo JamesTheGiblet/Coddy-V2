@@ -11,17 +11,23 @@ import traceback # For detailed exception information
 from pathlib import Path # For robust path manipulation
 import httpx
 
+# Add the project root to sys.path to allow imports from 'Coddy.core'
+# This calculates the path to 'C:\Users\gilbe\Documents\GitHub\Coddy V2'
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+
 try:
-    from core.code_generator import CodeGenerator
-    from core.utility_functions import execute_command
-    from core.memory_service import MemoryService
-    from core.pattern_oracle import PatternOracle
-    from core.websocket_server import send_to_websocket_server
-    from core.vibe_mode import VibeModeEngine
-    from core.logging_utility import log_info, log_warning, log_error, log_debug
-    from core.git_analyzer import GitAnalyzer
+    # Updated import paths to be absolute from the project root
+    from Coddy.core.code_generator import CodeGenerator
+    from Coddy.core.task_decomposition_engine import TaskDecompositionEngine
+    from Coddy.core.memory_service import MemoryService
+    from Coddy.core.pattern_oracle import PatternOracle
+    from Coddy.core.websocket_server import send_to_websocket_server
+    from Coddy.core.vibe_mode import VibeModeEngine
+    from Coddy.core.logging_utility import log_info, log_warning, log_error, log_debug
+    from Coddy.core.git_analyzer import GitAnalyzer
+    from Coddy.core.execution_manager import ExecutionManager, execute_command 
+    from Coddy.core.autonomous_agent import AutonomousAgent 
 except ImportError as e:
-    # This block handles critical import errors at startup
     print(f"FATAL ERROR: Could not import core modules required for CLI: {e}", file=sys.stderr)
     traceback.print_exc(file=sys.stderr)
     sys.exit(1)
@@ -29,13 +35,16 @@ except ImportError as e:
 # Global instances for services
 memory_service: Optional[MemoryService] = None
 pattern_oracle: Optional[PatternOracle] = None
-vibe_engine: Optional[VibeModeEngine] = None # Global instance for VibeModeEngine
-git_analyzer: Optional[GitAnalyzer] = None # Global instance for GitAnalyzer
+vibe_engine: Optional[VibeModeEngine] = None
+git_analyzer: Optional[GitAnalyzer] = None
+code_generator: Optional[CodeGenerator] = None
+execution_manager: Optional[ExecutionManager] = None
+autonomous_agent: Optional[AutonomousAgent] = None
 
-current_user_id: str = "default_user" # Placeholder, will be replaced by actual user management
-current_session_id: str = str(uuid.uuid4()) # Unique ID for each CLI session
-adaptive_prompt_suggestion: str = "" # Stores dynamic prompt suggestions
-session_context_memories: List[Dict[str, Any]] = [] # Stores loaded context for the current user
+current_user_id: str = "default_user"
+current_session_id: str = str(uuid.uuid4())
+adaptive_prompt_suggestion: str = ""
+session_context_memories: List[Dict[str, Any]] = []
 
 async def display_message(message: str, message_type: str = "info"):
     """
@@ -49,37 +58,55 @@ async def display_message(message: str, message_type: str = "info"):
         "session_id": current_session_id,
         "user_id": current_user_id
     }
-    await send_to_websocket_server(message_data) # Always send to WebSocket for UI
+    await send_to_websocket_server(message_data)
 
-    # Log messages using the new logging utility
     if message_type == "info":
         await log_info(message)
     elif message_type == "warning":
         await log_warning(message)
     elif message_type == "error":
-        # For errors, log the message. If an exception is being handled, exc_info=True
-        # will capture the current exception's traceback.
         await log_error(message, exc_info=True if sys.exc_info()[0] is not None else False)
     elif message_type == "debug":
         await log_debug(message)
 
 
 async def initialize_services():
-    """Initializes global MemoryService, PatternOracle, and VibeModeEngine instances."""
-    global memory_service, pattern_oracle, vibe_engine, git_analyzer
+    """Initializes global Coddy service instances."""
+    global memory_service, pattern_oracle, vibe_engine, git_analyzer, code_generator, execution_manager, autonomous_agent
     await display_message("Initializing Coddy services...", "info")
     
     try:
         memory_service = MemoryService(session_id=current_session_id, user_id=current_user_id)
         pattern_oracle = PatternOracle(memory_service)
-        vibe_engine = VibeModeEngine(memory_service, user_id=current_user_id) # Pass memory_service to VibeModeEngine
-        git_analyzer = GitAnalyzer() # Initialize GitAnalyzer
+        vibe_engine = VibeModeEngine(memory_service, user_id=current_user_id)
+        code_generator = CodeGenerator() # CodeGenerator init without memory_service or vibe_engine as per previous tracebacks
+        
+        # Ensure CodeGenerator has access to MemoryService and VibeEngine if needed internally
+        # (This would require CodeGenerator's __init__ to accept them)
+        # For now, if CodeGenerator methods need them, they must be passed as arguments.
+
+        execution_manager = ExecutionManager(
+            memory_service=memory_service,
+            vibe_engine=vibe_engine,
+            code_generator=code_generator,
+            current_user_id=current_user_id,
+            current_session_id=current_session_id
+        )
+
+        autonomous_agent = AutonomousAgent(
+            memory_service=memory_service,
+            vibe_engine=vibe_engine,
+            code_generator=code_generator,
+            execution_manager=execution_manager,
+            current_user_id=current_user_id,
+            current_session_id=current_session_id
+        )
+
         await vibe_engine.initialize() # Initialize VibeModeEngine to load its state
         await display_message("Services initialized.", "info")
     except Exception as e:
         await display_message(f"Failed to initialize one or more Coddy services: {e}", "error")
         await log_error(f"Service Initialization Error: {e}", exc_info=True)
-        # It's critical to halt if core services can't initialize
         sys.exit(1)
 
 
@@ -88,14 +115,12 @@ async def update_adaptive_prompt_suggestion():
     global adaptive_prompt_suggestion
     if pattern_oracle:
         try:
-            # Analyze command frequency for the current user
             frequent_commands = await pattern_oracle.analyze_command_frequency(
                 num_top_commands=1, user_id=current_user_id
             )
             if frequent_commands:
                 most_frequent_cmd = frequent_commands[0]['command']
-                # Avoid suggesting the current command being typed or generic ones
-                if most_frequent_cmd not in ["read", "write", "list", "exec", "checkpoint", "show", "vibe", "memory"]:
+                if most_frequent_cmd not in ["read", "write", "list", "exec", "checkpoint", "show", "vibe", "memory", "unit_tester", "help", "exit", "quit", "bye", "agent"]:
                     adaptive_prompt_suggestion = f" (Try '{most_frequent_cmd}'?)"
                 else:
                     adaptive_prompt_suggestion = ""
@@ -117,10 +142,10 @@ async def load_session_context():
     if memory_service:
         await display_message("Loading past context for user...", "info")
         try:
-            # Retrieve recent memories for the current user, NOT limited by current session_id
+            # MemoryService.retrieve_context will now use the correct API endpoint
             session_context_memories = await memory_service.retrieve_context(
-                num_recent=10, # Load up to 10 recent memories as context
-                query={"user_id": current_user_id} # Only filter by user_id for persistent context
+                num_recent=10,
+                query={"user_id": current_user_id}
             )
             if session_context_memories:
                 await display_message(f"Loaded {len(session_context_memories)} recent memories for user '{current_user_id}'.", "info")
@@ -135,7 +160,6 @@ async def load_session_context():
 async def _get_cli_prompt() -> str:
     """
     Dynamically generates the CLI prompt, including Git branch information.
-    This is a separate function to be called by start_cli.
     """
     branch_info = ""
     if git_analyzer:
@@ -159,40 +183,39 @@ async def handle_instruction(instruction: str):
     if not instruction:
         return
 
-    # User input command is echoed first to the UI/log
     await display_message(f"Coddy> {instruction}", "info")
 
     command_logged = False
-    command_parts = shlex.split(instruction) # Use shlex for robust parsing
+    original_instruction = instruction
+    command_parts = shlex.split(instruction)
     command_name = command_parts[0].lower() if command_parts else ""
     args = command_parts[1:]
 
     try:
-        if command_name == "read":
+        # Delegate complex instructions to the AutonomousAgent
+        if command_name == "agent":
+            if not args:
+                await display_message("Usage: agent <high_level_instruction>", "warning")
+                return
+            high_level_instruction = " ".join(args)
+            if autonomous_agent:
+                await autonomous_agent.execute_task(high_level_instruction)
+                command_logged = True
+            else:
+                await display_message("AutonomousAgent not initialized.", "error")
+            return
+
+        # Existing direct command handlers
+        elif command_name == "read":
             if not args:
                 await display_message("Usage: read <file_path>", "warning")
                 return
             file_path = args[0]
-            API_BASE_URL = "http://127.0.0.1:8000" # Define API_BASE_URL here or import if global
-            api_url = f"{API_BASE_URL}/api/files/read"
-            try:
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(api_url, params={"path": file_path})
-                    await response.raise_for_status() # ADDED 'await'
-                    data = await response.json() # ADDED 'await'
-                    content = data.get("content", "")
-                    await display_message(f"Content of '{file_path}':\n---\n{content}\n---", "response")
-                    await display_message(f"Successfully read '{file_path}'.", "success")
-                    command_logged = True
-            except httpx.HTTPStatusError as e:
-                data = await e.response.json() # ADDED 'await' here
-                error_detail = data.get("detail", e.response.text)
-                await display_message(f"API Error reading '{file_path}': {error_detail}", "error")
-            except httpx.RequestError:
-                await display_message(f"Connection Error: Could not connect to Coddy API to read '{file_path}'. Is the server running?", "error")
-            except Exception as e:
-                await log_error(f"Failed to read file via API: {file_path}", exc_info=True)
-                await display_message(f"An unexpected error occurred while reading '{file_path}': {e}", "error")
+            if execution_manager:
+                await execution_manager.read_file_api(file_path)
+                command_logged = True
+            else:
+                await display_message("ExecutionManager not initialized.", "error")
 
         elif command_name == "write":
             if len(args) < 2:
@@ -200,79 +223,35 @@ async def handle_instruction(instruction: str):
                 return
             file_path = args[0]
             content = " ".join(args[1:])
-            API_BASE_URL = "http://127.0.0.1:8000" # Define API_BASE_URL here or import if global
-            api_url = f"{API_BASE_URL}/api/files/write"
-            try:
-                async with httpx.AsyncClient() as client:
-                    response = await client.post(api_url, json={"path": file_path, "content": content})
-                    await response.raise_for_status() # ADDED 'await'
-                    await display_message(f"Successfully wrote content to '{file_path}'.", "success")
-                    command_logged = True
-            except httpx.HTTPStatusError as e:
-                data = await e.response.json() # ADDED 'await' here
-                error_detail = data.get("detail", e.response.text)
-                await display_message(f"API Error writing to '{file_path}': {error_detail}", "error")
-            except httpx.RequestError:
-                await display_message(f"Connection Error: Could not connect to Coddy API to write to '{file_path}'. Is the server running?", "error")
-            except Exception as e:
-                await log_error(f"Failed to write file via API: {file_path}", exc_info=True)
-                await display_message(f"An unexpected error occurred while writing to '{file_path}': {e}", "error")
+            if execution_manager:
+                await execution_manager.write_file_api(file_path, content)
+                command_logged = True
+            else:
+                await display_message("ExecutionManager not initialized.", "error")
 
         elif command_name == "list":
-            directory_path = args[0] if args else './' # Default to current dir if no path given
-            API_BASE_URL = "http://127.0.0.1:8000" # Define API_BASE_URL here or import if global
-            api_url = f"{API_BASE_URL}/api/files/list"
-            try:
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(api_url, params={"path": directory_path})
-                    await response.raise_for_status() # ADDED 'await'
-                    data = await response.json() # ADDED 'await'
-                    items = data.get("items", [])
-                    item_list_str = "\n".join([f"- {item}" for item in items])
-                    await display_message(f"Files and directories in '{directory_path}':\n{item_list_str}", "response")
-                    await display_message(f"Successfully listed '{directory_path}'.", "success")
-                    command_logged = True
-            except httpx.HTTPStatusError as e:
-                data = await e.response.json() # ADDED 'await' here
-                error_detail = data.get("detail", e.response.text)
-                await display_message(f"API Error listing '{directory_path}': {error_detail}", "error")
-            except httpx.RequestError:
-                await display_message(f"Connection Error: Could not connect to Coddy API to list '{directory_path}'. Is the server running?", "error")
-            except Exception as e:
-                await log_error(f"Failed to list directory: {directory_path}", exc_info=True)
-                await display_message(f"An unexpected error occurred while listing '{directory_path}': {e}", "error")
-
+            directory_path = args[0] if args else './'
+            if execution_manager:
+                await execution_manager.list_files_api(directory_path)
+                command_logged = True
+            else:
+                await display_message("ExecutionManager not initialized.", "error")
 
         elif command_name == "exec":
             if not args:
                 await display_message("Usage: exec <command_string>", "warning")
                 return
-            full_command = shlex.join(args) # Reconstruct command with shlex for safety
-            try:
-                return_code, stdout, stderr = await execute_command(full_command)
-                await display_message(f"Command '{full_command}' executed.", "response")
-                if stdout:
-                    await display_message(f"STDOUT:\n{stdout}", "response")
-                if stderr:
-                    await display_message(f"STDERR:\n{stderr}", "error")
-                    # Log stderr to file without full traceback unless it's an actual Python exception
-                    await log_warning(f"Command '{full_command}' produced STDERR: {stderr}")
-                if return_code != 0:
-                    await display_message(f"Command '{full_command}' failed with exit code {return_code}.", "error")
-                    await log_error(f"Command '{full_command}' failed with exit code {return_code}.")
-                else:
-                    await display_message(f"Command '{full_command}' executed successfully.", "success")
+            full_command = shlex.join(args)
+            if execution_manager:
+                await execution_manager.execute_shell_command(full_command)
                 command_logged = True
-            except Exception as e:
-                await display_message(f"Error executing command '{full_command}': {e}", "error")
-                await log_error(f"Exception during command execution: {full_command}", exc_info=True)
-
+            else:
+                await display_message("ExecutionManager not initialized.", "error")
 
         elif command_name == "exit" or command_name == "quit" or command_name == "bye":
             await display_message("Exiting Coddy CLI. Goodbye!", "info")
             sys.exit(0)
 
-        # --- Placeholder/Existing Command Handlers ---
         elif command_name == "checkpoint":
             if len(args) >= 2 and args[0].lower() == "save":
                 checkpoint_name = args[1]
@@ -284,7 +263,7 @@ async def handle_instruction(instruction: str):
                             tags=["checkpoint", checkpoint_name]
                         )
                         await display_message(f"Checkpoint '{checkpoint_name}' saved successfully.", "success")
-                        await load_session_context() # Refresh context in CLI's memory
+                        await load_session_context()
                         command_logged = True
                     except Exception as e:
                         await display_message(f"Error saving checkpoint '{checkpoint_name}': {e}", "error")
@@ -308,12 +287,12 @@ async def handle_instruction(instruction: str):
                             
                             cp = loaded_checkpoints[0]
                             if isinstance(cp.get('content'), dict) and cp['content'].get('type') == 'checkpoint':
-                                await display_message(f"   Name: {cp['content'].get('name')}", "response")
-                                await display_message(f"   Message: {cp['content'].get('message')}", "response")
-                                await display_message(f"   Timestamp: {cp.get('timestamp')}", "response")
-                                await display_message(f"   Session ID: {cp.get('session_id')}", "response")
+                                await display_message(f"    Name: {cp['content'].get('name')}", "response")
+                                await display_message(f"    Message: {cp['content'].get('message')}", "response")
+                                await display_message(f"    Timestamp: {cp.get('timestamp')}", "response")
+                                await display_message(f"    Session ID: {cp.get('session_id')}", "response")
                             else:
-                                await display_message(f"   Raw Memory Content: {cp.get('content')}", "response")
+                                await display_message(f"    Raw Memory Content: {cp.get('content')}", "response")
                             await display_message("---", "response")
                             command_logged = True
                         else:
@@ -325,7 +304,6 @@ async def handle_instruction(instruction: str):
                     await display_message("MemoryService not initialized, cannot load checkpoint.", "warning")
             else:
                 await display_message("Usage: checkpoint save <name> [message] or checkpoint load <name>", "warning")
-
 
         elif command_name == "show" and len(args) == 1 and args[0].lower() == "context":
             if session_context_memories:
@@ -341,12 +319,11 @@ async def handle_instruction(instruction: str):
                             formatted_time = timestamp.split('T')[0]
 
                     content_display = mem.get('content', 'N/A')
-                    # Pretty print content if it's a dictionary
                     if isinstance(content_display, dict):
-                        content_str = "\n".join([f"     - {k}: {v}" for k, v in content_display.items()])
-                        await display_message(f"   [{formatted_time}] \n{content_str}", "response")
+                        content_str = "\n".join([f"    - {k}: {v}" for k, v in content_display.items()])
+                        await display_message(f"  [{formatted_time}] \n{content_str}", "response")
                     else:
-                        await display_message(f"   [{formatted_time}] {content_display}", "response")
+                        await display_message(f"  [{formatted_time}] {content_display}", "response")
                 await display_message("--- End of Context ---", "response")
             else:
                 await display_message("No context loaded for the current session.", "info")
@@ -378,10 +355,11 @@ async def handle_instruction(instruction: str):
                 if not args or args[0].lower() == "search":
                     query_str = " ".join(args[1:]) if len(args) > 1 else ""
                     await display_message(f"Searching memory for: '{query_str}'...", "info")
+                    # MemoryService.load_memory will now use the correct API endpoint
                     results = await memory_service.load_memory(query={"content": {"$regex": query_str, "$options": "i"}})
                     if results:
                         await display_message(f"Found {len(results)} memories:", "response")
-                        for mem in results[:5]: # Show top 5
+                        for mem in results[:5]:
                              await display_message(f"- {mem.get('timestamp')}: {mem.get('content')}", "response")
                     else:
                         await display_message("No matching memories found.", "info")
@@ -390,45 +368,72 @@ async def handle_instruction(instruction: str):
                 command_logged = True
             else:
                 await display_message("MemoryService not initialized.", "warning")
+        
+        elif command_name == "unit_tester":
+            if not args:
+                await display_message("Usage: unit_tester <file_path>", "warning")
+                return
+            file_path = args[0]
+            if execution_manager:
+                success = await execution_manager.manage_unit_tests_and_correction(file_path, session_context_memories)
+                if success:
+                    await display_message(f"Unit test process for '{file_path}' completed successfully.", "success")
+                else:
+                    await display_message(f"Unit test process for '{file_path}' encountered issues.", "error")
+                command_logged = True
+            else:
+                await display_message("ExecutionManager not initialized.", "error")
 
         elif command_name == "help":
             await display_message("\n--- Coddy Commands ---", "response")
-            await display_message("   read <file>           - Read the content of a file.", "response")
-            await display_message("   write <file> <content>  - Write content to a file.", "response")
-            await display_message("   list [directory]        - List files in a directory.", "response")
-            await display_message("   exec <command>          - Execute a shell command.", "response")
-            await display_message("   checkpoint save|load <name> - Save or load a session checkpoint.", "response")
-            await display_message("   show context            - Display the loaded user context.", "response")
-            await display_message("   vibe [set|clear]        - Manage the current vibe/focus.", "response")
-            await display_message("   memory [search]         - Interact with long-term memory.", "response")
-            await display_message("   unit_tester <file>      - Generate unit tests for a file.", "response")
-            await display_message("   help                    - Show this help message.", "response")
-            await display_message("   exit, quit, bye         - Exit the CLI.", "response")
+            await display_message("  agent <instruction>     - Execute a high-level instruction using the autonomous agent.", "response")
+            await display_message("  read <file>             - Read the content of a file.", "response")
+            await display_message("  write <file> <content>  - Write content to a file.", "response")
+            await display_message("  list [directory]        - List files in a directory.", "response")
+            await display_message("  exec <command>          - Execute a shell command.", "response")
+            await display_message("  checkpoint save|load <name> - Save or load a session checkpoint.", "response")
+            await display_message("  show context            - Display the loaded user context.", "response")
+            await display_message("  vibe [set <description>|clear] - Manage the current vibe/focus.", "response")
+            await display_message("  memory [search <query>] - Interact with long-term memory.", "response")
+            await display_message("  unit_tester <file>      - Generate and optionally run unit tests for a file.", "response")
+            await display_message("  help                    - Show this help message.", "response")
+            await display_message("  exit, quit, bye         - Exit the CLI.", "response")
             await display_message("---", "response")
             command_logged = True
 
         else:
-            await display_message(f"Unknown instruction: '{command_name}'. Type 'help' for available commands.", "warning")
-            if memory_service:
-                await memory_service.store_memory(
-                    content={"type": "unrecognized_command", "command": instruction},
-                    tags=["cli_command", "unrecognized"]
-                )
+            await display_message(f"Instruction '{instruction}' not a direct command. Attempting to pass to Autonomous Agent...", "info")
+            if autonomous_agent:
+                await autonomous_agent.execute_task(instruction)
+                command_logged = True
+            else:
+                await display_message("AutonomousAgent not initialized. Cannot process unknown instruction.", "error")
+
 
     except Exception as e:
         await display_message(f"An unexpected error occurred while handling instruction: {e}", "error")
-        await log_error(f"Instruction Handler Error for '{instruction}'", exc_info=True)
+        await log_error(f"Instruction Handler Error for '{original_instruction}'", exc_info=True)
 
     finally:
-        if command_logged and memory_service:
+        if not command_logged and memory_service:
             try:
                 await memory_service.store_memory(
-                    content={"type": "command", "command": command_name, "full_instruction": instruction},
+                    content={"type": "command", "command": command_name, "full_instruction": original_instruction},
                     tags=["cli_command", command_name]
                 )
             except Exception as e:
                 await display_message(f"Failed to log command to memory: {e}", "error")
-                await log_error(f"Memory logging failed for command: {instruction}", exc_info=True)
+                await log_error(f"Memory logging failed for command: {original_instruction}", exc_info=True)
+        elif command_logged and memory_service:
+            if original_instruction != instruction:
+                 try:
+                    await memory_service.store_memory(
+                        content={"type": "top_level_command_outcome", "command": command_name, "full_instruction": original_instruction},
+                        tags=["cli_command", "top_level", command_name]
+                    )
+                 except Exception as e:
+                    await display_message(f"Failed to log original command to memory: {e}", "error")
+                    await log_error(f"Memory logging failed for original command: {original_instruction}", exc_info=True)
 
 
 async def start_cli():
@@ -455,3 +460,4 @@ async def start_cli():
             await display_message(f"\nAn unexpected error occurred in the main loop: {e}", "error")
             await log_error("Main CLI loop error", exc_info=True)
             break
+

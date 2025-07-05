@@ -2,8 +2,12 @@
 
 import streamlit as st
 import asyncio
+import shlex
 import httpx # Import httpx to catch specific exceptions
 import dashboard_api # Import the API client we just created
+
+# Import the TaskDecompositionEngine for AI Assistant functionality
+from core.task_decomposition_engine import TaskDecompositionEngine
 
 # --- Helper Function for Async Calls in Streamlit ---
 # Streamlit runs synchronously, so we need a way to execute async functions.
@@ -13,6 +17,49 @@ def run_async_in_streamlit(async_func):
     Runs an asynchronous function within the synchronous Streamlit environment.
     """
     return asyncio.run(async_func)
+
+async def execute_subtask(subtask: str):
+    """Parses and executes a single subtask string via the dashboard_api."""
+    st.markdown(f"▶️ **Executing:** `{subtask}`")
+    try:
+        parts = shlex.split(subtask)
+        if not parts:
+            st.warning("Skipping empty subtask.")
+            return
+
+        command = parts[0].lower()
+        args = parts[1:]
+
+        if command == "read":
+            if not args:
+                st.error("`read` command requires a file path.")
+                return
+            path = args[0]
+            with st.spinner(f"Reading `{path}`..."):
+                content = await dashboard_api.read_file(path)
+                st.text_area(f"Content of `{path}`", value=content, height=150, disabled=True)
+            st.success(f"Read `{path}` successfully.")
+        
+        elif command == "write":
+            if len(args) < 2:
+                st.error("`write` command requires a file path and content.")
+                return
+            path = args[0]
+            content = " ".join(args[1:])
+            with st.spinner(f"Writing to `{path}`..."):
+                message = await dashboard_api.write_file(path, content)
+            st.success(message)
+
+        elif command == "list":
+            path = args[0] if args else "."
+            with st.spinner(f"Listing contents of `{path}`..."):
+                items = await dashboard_api.list_files(path)
+                st.json({"directory": path, "items": items})
+            st.success(f"Listed contents of `{path}`.")
+        else:
+            st.warning(f"Command `{command}` is not supported for automatic execution in the dashboard yet.")
+    except Exception as e:
+        st.error(f"Failed to execute subtask `{subtask}`: {e}")
 
 # --- Custom CSS for Coddy Portal Styling ---
 # This CSS aims to give the Streamlit app a sleek, dark, and modern "portal" feel
@@ -187,7 +234,6 @@ st.set_page_config(
     page_title="Coddy Dashboard",
     layout="wide", # Use wide layout for more screen real estate
     initial_sidebar_state="expanded", # Keep sidebar expanded by default
-    # Removed: theme="dark" # This argument is not supported in older Streamlit versions
 )
 
 # Inject custom CSS
@@ -198,7 +244,8 @@ st.markdown("Your AI Dev Companion, Reimagined. (API-First Client)")
 
 # --- Sidebar Navigation ---
 st.sidebar.title("Navigation")
-page = st.sidebar.radio("Go to", ["Roadmap", "File Explorer", "File Writer", "Coming Soon..."])
+# Added "AI Assistant" to the navigation
+page = st.sidebar.radio("Go to", ["Roadmap", "File Explorer", "Workspace", "Coming Soon..."])
 
 # --- Main Content Area ---
 if page == "Roadmap":
@@ -260,33 +307,79 @@ elif page == "File Explorer":
             except Exception as e:
                 st.error(f"🔥 An unexpected error occurred: {e}")
 
-elif page == "File Writer":
-    st.header("📝 File Writer")
-    st.write("Write new files or update existing ones via the Coddy API.")
+elif page == "Workspace":
+    tab_assistant, tab_writer = st.tabs(["🧠 AI Assistant", "📝 File Writer"])
 
-    write_path = st.text_input("Enter file path to write (e.g., new_file.txt):", value="new_file_from_dashboard.txt")
-    write_content = st.text_area("Enter content to write:", value="Hello from Coddy Dashboard!", height=200)
+    with tab_assistant:
+        st.header("🧠 Coddy AI Assistant")
+        st.write("Enter high-level instructions or complex tasks for Coddy to decompose and execute.")
+        
+        # Initialize session state for subtasks
+        if 'subtasks' not in st.session_state:
+            st.session_state.subtasks = []
 
-    if st.button("Write File"):
-        with st.spinner(f"Writing to '{write_path}'..."):
-            try:
-                message = run_async_in_streamlit(dashboard_api.write_file(write_path, write_content))
-                st.success(message)
-                # Optionally, show the content after writing
-                if st.checkbox("Show content after writing?"):
-                    read_back_content = run_async_in_streamlit(dashboard_api.read_file(write_path))
-                    st.code(read_back_content)
-            except httpx.RequestError:
-                st.error("🚨 Connection Error: Could not connect to Coddy API. Is the backend running?")
-            except httpx.HTTPStatusError as e:
-                st.error(f"⚠️ API Error ({e.response.status_code}): {e.response.json().get('detail', 'An API error occurred.')}")
-            except Exception as e:
-                st.error(f"🔥 An unexpected error occurred: {e}")
+        user_instruction = st.text_area("What do you want Coddy to do?", height=150, key="ai_instruction_input")
+
+        if st.button("Decompose Task", key="decompose_button"):
+            if not user_instruction.strip():
+                st.warning("Please enter an instruction for Coddy to decompose.")
+                st.session_state.subtasks = [] # Clear previous subtasks
+            else:
+                with st.spinner("Decomposing your instruction..."):
+                    try:
+                        decomposition_engine = TaskDecompositionEngine()
+                        # The engine is now async, so we need to run it in the loop
+                        subtasks = run_async_in_streamlit(decomposition_engine.decompose(user_instruction))
+
+                        if subtasks and not (len(subtasks) == 1 and "Error:" in subtasks[0]):
+                            st.session_state.subtasks = subtasks
+                        else:
+                            st.session_state.subtasks = []
+                            st.warning(f"Coddy could not decompose your task, or it was too simple: {subtasks[0] if subtasks else 'Unknown issue'}")
+                            st.info("Please try a more detailed instruction, or break it down yourself for now.")
+                    except Exception as e:
+                        st.session_state.subtasks = []
+                        st.error(f"🔥 An unexpected error occurred during decomposition: {e}")
+
+        # Display the plan and the execution button if there are subtasks
+        if st.session_state.subtasks:
+            st.subheader("Execution Plan")
+            for i, subtask in enumerate(st.session_state.subtasks):
+                st.markdown(f"**{i+1}.** `{subtask}`")
+            
+            if st.button("🚀 Execute Plan", key="execute_plan_button"):
+                with st.expander("Execution Log", expanded=True):
+                    run_async_in_streamlit(asyncio.gather(*(execute_subtask(subtask) for subtask in st.session_state.subtasks)))
+                    st.balloons()
+                    st.success("Plan execution finished!")
+
+    with tab_writer:
+        st.header("📝 File Writer")
+        st.write("Write new files or update existing ones via the Coddy API.")
+
+        write_path = st.text_input("Enter file path to write (e.g., new_file.txt):", value="new_file_from_dashboard.txt", key="file_writer_path")
+        write_content = st.text_area("Enter content to write:", value="Hello from Coddy Dashboard!", height=200, key="file_writer_content")
+
+        if st.button("Write File", key="file_writer_button"):
+            with st.spinner(f"Writing to '{write_path}'..."):
+                try:
+                    message = run_async_in_streamlit(dashboard_api.write_file(write_path, write_content))
+                    st.success(message)
+                    # Optionally, show the content after writing
+                    if st.checkbox("Show content after writing?", key="show_content_checkbox"):
+                        read_back_content = run_async_in_streamlit(dashboard_api.read_file(write_path))
+                        st.code(read_back_content)
+                except httpx.RequestError:
+                    st.error("🚨 Connection Error: Could not connect to Coddy API. Is the backend running?")
+                except httpx.HTTPStatusError as e:
+                    st.error(f"⚠️ API Error ({e.response.status_code}): {e.response.json().get('detail', 'An API error occurred.')}")
+                except Exception as e:
+                    st.error(f"🔥 An unexpected error occurred: {e}")
 
 elif page == "Coming Soon...":
     st.header("🚧 More Features on the Horizon!")
     st.info("Stay tuned for more exciting Coddy features, including Memory Logs, Git Insights, and the Idea Synthesizer Playground, all powered by the Coddy API!")
 
 st.sidebar.markdown("---")
-st.sidebar.info("Coddy: The Sentient Loop (v2.0.0)")
+st.sidebar.info("Coddy: The Sentient Loop Dashboard")
 st.sidebar.info("Async to the Bone. Terminal to UI.")
