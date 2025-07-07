@@ -5,22 +5,30 @@ from fastapi import FastAPI, APIRouter, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from core.roadmap_manager import RoadmapManager
-from core.utility_functions import list_files, read_file, write_file
+from ..core.roadmap_manager import RoadmapManager
+from ..core.utility_functions import list_files, read_file, write_file
+from ..core.task_decomposition_engine import TaskDecompositionEngine
 
 # --- Pydantic Models ---
 class FileWriteRequest(BaseModel):
     path: str
     content: str
 
+class DecomposeRequest(BaseModel):
+    instruction: str
+
 # --- Lifespan Management ---
+services = {}
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handles application startup and shutdown events."""
     print("Coddy API starting up...")
     # You can initialize resources here, like database connections.
+    services["task_decomposition_engine"] = TaskDecompositionEngine()
     yield
     # Clean up resources on shutdown.
+    services.clear()
     print("Coddy API shutting down...")
 
 # --- App Initialization ---
@@ -46,6 +54,11 @@ app.add_middleware(
 file_router = APIRouter(
     prefix="/api/files",
     tags=["File Operations"],
+)
+
+task_router = APIRouter(
+    prefix="/api/tasks",
+    tags=["Task Operations"],
 )
 
 # --- Dependencies and Services ---
@@ -100,8 +113,28 @@ async def write_file_contents(request: FileWriteRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
 
+@task_router.post("/decompose", response_model=list[str])
+async def decompose_task(request: DecomposeRequest):
+    """Decomposes a high-level instruction into a series of subtasks."""
+    try:
+        engine = services.get("task_decomposition_engine")
+        if not engine:
+            raise HTTPException(status_code=503, detail="Task Decomposition Engine not available.")
+        
+        subtasks = await engine.decompose(request.instruction)
+        
+        if not subtasks or (len(subtasks) == 1 and "Error:" in subtasks[0]):
+             raise HTTPException(status_code=400, detail=f"Could not decompose task: {subtasks[0] if subtasks else 'Unknown issue'}")
+
+        return subtasks
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred during decomposition: {e}")
+
 # Include the router in the main app
 app.include_router(file_router)
+app.include_router(task_router)
 
 @app.get("/", tags=["Root"])
 async def root():

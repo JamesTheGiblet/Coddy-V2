@@ -6,9 +6,6 @@ import shlex
 import httpx # Import httpx to catch specific exceptions
 import dashboard_api # Import the API client we just created
 
-# Import the TaskDecompositionEngine for AI Assistant functionality
-from core.task_decomposition_engine import TaskDecompositionEngine
-
 # --- Helper Function for Async Calls in Streamlit ---
 # Streamlit runs synchronously, so we need a way to execute async functions.
 # This function wraps an async function call, allowing it to be awaited.
@@ -325,18 +322,19 @@ elif page == "Workspace":
                 st.warning("Please enter an instruction for Coddy to decompose.")
                 st.session_state.subtasks = [] # Clear previous subtasks
             else:
-                with st.spinner("Decomposing your instruction..."):
+                with st.spinner("Decomposing your instruction via API..."):
                     try:
-                        decomposition_engine = TaskDecompositionEngine()
-                        # The engine is now async, so we need to run it in the loop
-                        subtasks = run_async_in_streamlit(decomposition_engine.decompose(user_instruction))
-
-                        if subtasks and not (len(subtasks) == 1 and "Error:" in subtasks[0]):
-                            st.session_state.subtasks = subtasks
-                        else:
-                            st.session_state.subtasks = []
-                            st.warning(f"Coddy could not decompose your task, or it was too simple: {subtasks[0] if subtasks else 'Unknown issue'}")
-                            st.info("Please try a more detailed instruction, or break it down yourself for now.")
+                        # Call the new API function instead of the local engine
+                        subtasks = run_async_in_streamlit(dashboard_api.decompose_task(user_instruction))
+                        st.session_state.subtasks = subtasks
+                    except httpx.RequestError:
+                        st.session_state.subtasks = []
+                        st.error("🚨 Connection Error: Could not connect to Coddy API. Is the backend running?")
+                    except httpx.HTTPStatusError as e:
+                        st.session_state.subtasks = []
+                        detail = e.response.json().get('detail', 'An API error occurred.')
+                        st.error(f"⚠️ API Error ({e.response.status_code}): {detail}")
+                        st.info("Please try a more detailed instruction, or break it down yourself for now.")
                     except Exception as e:
                         st.session_state.subtasks = []
                         st.error(f"🔥 An unexpected error occurred during decomposition: {e}")
