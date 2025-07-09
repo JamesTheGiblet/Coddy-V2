@@ -28,6 +28,24 @@ async def generate_changelog_endpoint(request: Request, payload: GenerateChangel
 
 @router.post("/generate_todo_stubs", response_model=Dict[str, Any])
 async def generate_todo_stubs_endpoint(request: Request, payload: GenerateTodoStubsRequest):
+    """
+    Scans a directory for TODO comments and generates a markdown file with stubs.
+    """
+    try:
+        stub_generator: StubAutoGenerator = request.app.state.services["stub_auto_generator"]
+        
+        stubs_content = await stub_generator.generate_todo_stubs(
+            scan_path=payload.scan_path,
+            output_file=payload.output_file,
+            user_profile=payload.user_profile
+        )
+        
+        return {"message": f"TODO stubs generated and saved to {payload.output_file}", "stubs_content": stubs_content}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate TODO stubs: {str(e)}")
+
+@router.post("/generate_todo_stubs", response_model=Dict[str, Any])
+async def generate_todo_stubs_endpoint(request: Request, payload: GenerateTodoStubsRequest):
     try:
         stub_generator: StubAutoGenerator = request.app.state.services["stub_auto_generator"]
         

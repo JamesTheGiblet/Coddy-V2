@@ -749,33 +749,39 @@ elif page == "Personalization": # NEW: Personalization Page
     st.markdown("---")
     st.subheader("Provide Feedback")
     st.write("Help Coddy learn by rating its performance on the last interaction.")
-    
-    feedback_rating = st.slider("Rating (1-5):", min_value=1, max_value=5, value=3, step=1, key="feedback_rating_input")
-    feedback_comment = st.text_area("Optional Comment:", key="feedback_comment_input")
 
-    if st.button("Submit Feedback", key="submit_feedback_button"):
-        if not feedback_comment.strip():
-            st.warning("Please provide a comment for your feedback.")
-        else:
-            with st.spinner("Submitting feedback..."):
-                try:
-                    run_async_in_streamlit(lambda: dashboard_api.add_feedback(
-                        rating=feedback_rating,
-                        comment=feedback_comment
-                    ))
-                    st.success("Thank you for your feedback! It helps Coddy improve.")
-                    # Clear the comment box by updating its key or value
-                    st.session_state.feedback_comment_input = "" 
-                    # Optionally reload profile to show updated feedback log
-                    if st.session_state.user_profile:
-                        st.session_state.user_profile = run_async_in_streamlit(lambda: dashboard_api.get_user_profile())
-                except httpx.RequestError:
-                    st.error("🚨 Connection Error: Could not connect to Coddy API. Is the backend running?")
-                except httpx.HTTPStatusError as e:
-                    st.error(f"⚠️ API Error ({e.response.status_code}): {e.response.json().get('detail', 'An API error occurred.')}")
-                except Exception as e:
-                    st.error(f"🔥 An unexpected error occurred while submitting feedback: {e}")
+    # Use a form to handle submission and clearing of inputs idiomatically.
+    with st.form("feedback_form", clear_on_submit=True):
+        feedback_rating = st.slider("Rating (1-5):", min_value=1, max_value=5, value=3, step=1)
+        feedback_comment = st.text_area("Optional Comment:")
 
+        submitted = st.form_submit_button("Submit Feedback")
+
+        if submitted:
+            if not feedback_comment.strip():
+                st.warning("Please provide a comment for your feedback.")
+            else:
+                with st.spinner("Submitting feedback..."):
+                    try:
+                        run_async_in_streamlit(lambda: dashboard_api.add_feedback(
+                            rating=feedback_rating,
+                            comment=feedback_comment
+                        ))
+                        # Store success message in session_state to display it after the form clears.
+                        st.session_state.feedback_success_message = "Thank you for your feedback! It helps Coddy improve."
+                        # Optionally reload profile to show updated feedback log
+                        if 'user_profile' in st.session_state and st.session_state.user_profile:
+                            st.session_state.user_profile = run_async_in_streamlit(lambda: dashboard_api.get_user_profile())
+                    except httpx.RequestError:
+                        st.error("🚨 Connection Error: Could not connect to Coddy API. Is the backend running?")
+                    except httpx.HTTPStatusError as e:
+                        st.error(f"⚠️ API Error ({e.response.status_code}): {e.response.json().get('detail', 'An API error occurred.')}")
+                    except Exception as e:
+                        st.error(f"🔥 An unexpected error occurred while submitting feedback: {e}")
+
+    if "feedback_success_message" in st.session_state:
+        st.success(st.session_state.feedback_success_message)
+        del st.session_state.feedback_success_message # Clear the message so it doesn't reappear.
 
 elif page == "Coming Soon...":
     st.header("🚧 More Features on the Horizon!")
