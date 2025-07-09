@@ -7,6 +7,7 @@ import httpx # Import httpx to catch specific exceptions
 import dashboard_api # Import the API client we just created
 import nest_asyncio # Import nest_asyncio
 import os # Import the os module for path operations
+import json # Added for handling JSON input/output for profile settings
 
 # Apply nest_asyncio to allow nested event loops, which is common in environments
 # like Streamlit where an event loop might already be running.
@@ -196,7 +197,7 @@ custom_css = """
         padding: 0.8rem 1.8rem; /* Larger padding */
         font-weight: 600; /* Semibold */
         transition: background-color 0.3s ease, transform 0.2s ease, box-shadow 0.3s ease, border-color 0.3s ease;
-        box_shadow: 0 4px 10px rgba(0, 0, 0, 0.4); /* Deeper shadow */
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4); /* Deeper shadow */
     }
     .stButton > button:hover {
         background-color: #ba374e; /* Darker accent on hover */
@@ -268,17 +269,17 @@ custom_css = """
 
     /* Markdown elements for better readability */
     p {
-        line_height: 1.6;
-        margin_bottom: 1rem;
+        line-height: 1.6;
+        margin-bottom: 1rem;
     }
     a {
         color: #00e5ff; /* Neon blue links */
-        text_decoration: none;
+        text-decoration: none;
         transition: color 0.3s ease;
     }
     a:hover {
         color: #e94560; /* Pink on hover */
-        text_decoration: underline;
+        text-decoration: underline;
     }
 </style>
 """
@@ -298,8 +299,8 @@ st.markdown("Your AI Dev Companion, Reimagined. (API-First Client)")
 
 # --- Sidebar Navigation ---
 st.sidebar.title("Navigation")
-# Added "AI Assistant" to the navigation
-page = st.sidebar.radio("Go to", ["Roadmap", "File Explorer", "Workspace", "Coming Soon..."])
+# Added "Personalization" to the navigation
+page = st.sidebar.radio("Go to", ["Roadmap", "File Explorer", "Workspace", "Personalization", "Coming Soon..."])
 
 # --- Main Content Area ---
 if page == "Roadmap":
@@ -447,6 +448,159 @@ elif page == "Workspace":
                     st.error(f"⚠️ API Error ({e.response.status_code}): {e.response.json().get('detail', 'An API error occurred.')}")
                 except Exception as e:
                     st.error(f"🔥 An unexpected error occurred: {e}")
+
+elif page == "Personalization": # NEW: Personalization Page
+    st.header("✨ Your Personalization Settings")
+    st.write("Manage your Coddy profile to tailor its suggestions, prompts, and creative outputs.")
+
+    if 'user_profile' not in st.session_state:
+        st.session_state.user_profile = {} # Initialize empty profile
+
+    # Fetch and display current profile
+    if st.button("Load My Profile"):
+        with st.spinner("Loading profile..."):
+            try:
+                profile_data = run_async_in_streamlit(lambda: dashboard_api.get_user_profile())
+                st.session_state.user_profile = profile_data
+                st.success("Profile loaded successfully!")
+            except httpx.RequestError:
+                st.error("🚨 Connection Error: Could not connect to Coddy API. Is the backend running?")
+            except httpx.HTTPStatusError as e:
+                st.error(f"⚠️ API Error ({e.response.status_code}): {e.response.json().get('detail', 'An API error occurred.')}")
+            except Exception as e:
+                st.error(f"🔥 An unexpected error occurred while loading profile: {e}")
+
+    if st.session_state.user_profile:
+        st.subheader("Current Profile Data:")
+        st.json(st.session_state.user_profile)
+
+        st.markdown("---")
+        st.subheader("Update Preferences")
+
+        # Input fields for various profile attributes
+        st.markdown("#### LLM Provider Configuration (JSON)")
+        llm_config_str = st.text_area(
+            "Enter LLM Provider Config (JSON format):",
+            value=json.dumps(st.session_state.user_profile.get('llm_provider_config', {}), indent=2),
+            height=150,
+            key="llm_config_input"
+        )
+
+        st.markdown("#### Idea Synthesizer Settings")
+        idea_synth_persona = st.text_input(
+            "Idea Synth Persona:",
+            value=st.session_state.user_profile.get('idea_synth_persona', 'default'),
+            key="idea_synth_persona_input"
+        )
+        idea_synth_creativity = st.slider(
+            "Idea Synth Creativity (0.0 - 1.0):",
+            min_value=0.0,
+            max_value=1.0,
+            value=float(st.session_state.user_profile.get('idea_synth_creativity', 0.7)),
+            step=0.1,
+            key="idea_synth_creativity_input"
+        )
+
+        st.markdown("#### Coding Style Preferences (JSON)")
+        coding_style_str = st.text_area(
+            "Enter Coding Style Preferences (JSON format):",
+            value=json.dumps(st.session_state.user_profile.get('coding_style_preferences', {}), indent=2),
+            height=150,
+            key="coding_style_input"
+        )
+
+        st.markdown("#### Preferred Languages")
+        preferred_languages_str = st.text_input(
+            "Enter Preferred Languages (comma-separated, e.g., Python,JavaScript):",
+            value=", ".join(st.session_state.user_profile.get('preferred_languages', [])),
+            key="preferred_languages_input"
+        )
+
+        st.markdown("#### Common Patterns (JSON)")
+        common_patterns_str = st.text_area(
+            "Enter Common Patterns (JSON format):",
+            value=json.dumps(st.session_state.user_profile.get('common_patterns', {}), indent=2),
+            height=150,
+            key="common_patterns_input"
+        )
+
+        if st.button("Save Profile Changes", key="save_profile_button"):
+            try:
+                # Parse JSON inputs
+                parsed_llm_config = json.loads(llm_config_str)
+                parsed_coding_style = json.loads(coding_style_str)
+                parsed_common_patterns = json.loads(common_patterns_str)
+                parsed_preferred_languages = [lang.strip() for lang in preferred_languages_str.split(',') if lang.strip()]
+
+                updated_profile = {
+                    "llm_provider_config": parsed_llm_config,
+                    "idea_synth_persona": idea_synth_persona,
+                    "idea_synth_creativity": idea_synth_creativity,
+                    "coding_style_preferences": parsed_coding_style,
+                    "preferred_languages": parsed_preferred_languages,
+                    "common_patterns": parsed_common_patterns
+                }
+
+                with st.spinner("Saving profile changes..."):
+                    # Call the API to update the profile
+                    run_async_in_streamlit(lambda: dashboard_api.set_user_profile(updated_profile))
+                    st.success("Profile updated successfully!")
+                    # Reload profile to reflect changes
+                    st.session_state.user_profile = run_async_in_streamlit(lambda: dashboard_api.get_user_profile())
+            except json.JSONDecodeError as e:
+                st.error(f"JSON parsing error: Please ensure your JSON inputs are valid. Error: {e}")
+            except httpx.RequestError:
+                st.error("🚨 Connection Error: Could not connect to Coddy API. Is the backend running?")
+            except httpx.HTTPStatusError as e:
+                st.error(f"⚠️ API Error ({e.response.status_code}): {e.response.json().get('detail', 'An API error occurred.')}")
+            except Exception as e:
+                st.error(f"🔥 An unexpected error occurred while saving profile: {e}")
+
+        st.markdown("---")
+        st.subheader("Reset Profile")
+        if st.button("Clear My Profile (Reset to Default)", key="clear_profile_button"):
+            if st.warning("Are you sure you want to clear your profile? This action cannot be undone."):
+                if st.button("Confirm Clear Profile", key="confirm_clear_profile_button"):
+                    with st.spinner("Clearing profile..."):
+                        try:
+                            run_async_in_streamlit(lambda: dashboard_api.clear_user_profile())
+                            st.session_state.user_profile = run_async_in_streamlit(lambda: dashboard_api.get_user_profile()) # Reload default
+                            st.success("Profile reset to default!")
+                        except httpx.RequestError:
+                            st.error("🚨 Connection Error: Could not connect to Coddy API. Is the backend running?")
+                        except httpx.HTTPStatusError as e:
+                            st.error(f"⚠️ API Error ({e.response.status_code}): {e.response.json().get('detail', 'An API error occurred.')}")
+                        except Exception as e:
+                            st.error(f"🔥 An unexpected error occurred while clearing profile: {e}")
+    else:
+        st.info("Click 'Load My Profile' to view and manage your personalization settings.")
+
+    st.markdown("---")
+    st.subheader("Provide Feedback")
+    st.write("Help Coddy learn by rating its performance on the last interaction.")
+    
+    feedback_rating = st.slider("Rating (1-5):", min_value=1, max_value=5, value=3, step=1, key="feedback_rating_input")
+    feedback_comment = st.text_area("Optional Comment:", key="feedback_comment_input")
+
+    if st.button("Submit Feedback", key="submit_feedback_button"):
+        if not feedback_comment.strip():
+            st.warning("Please provide a comment for your feedback.")
+        else:
+            with st.spinner("Submitting feedback..."):
+                try:
+                    run_async_in_streamlit(lambda: dashboard_api.add_feedback(
+                        rating=feedback_rating,
+                        comment=feedback_comment
+                    ))
+                    st.success("Thank you for your feedback! It helps Coddy improve.")
+                    feedback_comment = "" # Clear comment box after submission
+                except httpx.RequestError:
+                    st.error("🚨 Connection Error: Could not connect to Coddy API. Is the backend running?")
+                except httpx.HTTPStatusError as e:
+                    st.error(f"⚠️ API Error ({e.response.status_code}): {e.response.json().get('detail', 'An API error occurred.')}")
+                except Exception as e:
+                    st.error(f"🔥 An unexpected error occurred while submitting feedback: {e}")
+
 
 elif page == "Coming Soon...":
     st.header("🚧 More Features on the Horizon!")

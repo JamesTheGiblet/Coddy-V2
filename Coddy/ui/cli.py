@@ -10,6 +10,7 @@ import shlex # For robust command parsing
 import traceback # For detailed exception information
 from pathlib import Path # For robust path manipulation
 import httpx
+import json # Added for parsing JSON input for profile set command
 
 # Add the project root to sys.path to allow imports from 'Coddy.core'
 # This calculates the path to 'C:\Users\gilbe\Documents\GitHub\Coddy V2'
@@ -27,6 +28,7 @@ try:
     from Coddy.core.git_analyzer import GitAnalyzer
     from Coddy.core.execution_manager import ExecutionManager, execute_command 
     from Coddy.core.autonomous_agent import AutonomousAgent 
+    from Coddy.core.user_profile import UserProfile # NEW: Import UserProfile
 except ImportError as e:
     print(f"FATAL ERROR: Could not import core modules required for CLI: {e}", file=sys.stderr)
     traceback.print_exc(file=sys.stderr)
@@ -40,6 +42,7 @@ git_analyzer: Optional[GitAnalyzer] = None
 code_generator: Optional[CodeGenerator] = None
 execution_manager: Optional[ExecutionManager] = None
 autonomous_agent: Optional[AutonomousAgent] = None
+user_profile_manager: Optional[UserProfile] = None # NEW: Global UserProfile instance
 
 current_user_id: str = "default_user"
 current_session_id: str = str(uuid.uuid4())
@@ -72,19 +75,25 @@ async def display_message(message: str, message_type: str = "info"):
 
 async def initialize_services():
     """Initializes global Coddy service instances."""
-    global memory_service, pattern_oracle, vibe_engine, git_analyzer, code_generator, execution_manager, autonomous_agent
+    global memory_service, pattern_oracle, vibe_engine, git_analyzer, code_generator, execution_manager, autonomous_agent, user_profile_manager
     await display_message("Initializing Coddy services...", "info")
     
     try:
         memory_service = MemoryService(session_id=current_session_id, user_id=current_user_id)
-        pattern_oracle = PatternOracle(memory_service)
-        vibe_engine = VibeModeEngine(memory_service, user_id=current_user_id)
-        code_generator = CodeGenerator() # CodeGenerator init without memory_service or vibe_engine as per previous tracebacks
         
-        # Ensure CodeGenerator has access to MemoryService and VibeEngine if needed internally
-        # (This would require CodeGenerator's __init__ to accept them)
-        # For now, if CodeGenerator methods need them, they must be passed as arguments.
+        # NEW: Initialize UserProfile manager
+        user_profile_manager = UserProfile(session_id=current_session_id, user_id=current_user_id)
+        await user_profile_manager.initialize() # Load the user profile asynchronously
 
+        # Pass user_profile_manager to VibeModeEngine
+        vibe_engine = VibeModeEngine(memory_service, user_profile_manager=user_profile_manager)
+        await vibe_engine.initialize() # Initialize VibeModeEngine to load its state
+
+        # Pass user_profile_manager to CodeGenerator (assuming CodeGenerator's __init__ is updated)
+        code_generator = CodeGenerator(user_profile_manager=user_profile_manager) 
+        
+        pattern_oracle = PatternOracle(memory_service)
+        
         execution_manager = ExecutionManager(
             memory_service=memory_service,
             vibe_engine=vibe_engine,
@@ -93,16 +102,17 @@ async def initialize_services():
             current_session_id=current_session_id
         )
 
+        # Pass user_profile_manager to AutonomousAgent (assuming AutonomousAgent's __init__ is updated)
         autonomous_agent = AutonomousAgent(
             memory_service=memory_service,
             vibe_engine=vibe_engine,
             code_generator=code_generator,
             execution_manager=execution_manager,
             current_user_id=current_user_id,
-            current_session_id=current_session_id
+            current_session_id=current_session_id,
+            user_profile_manager=user_profile_manager 
         )
 
-        await vibe_engine.initialize() # Initialize VibeModeEngine to load its state
         await display_message("Services initialized.", "info")
     except Exception as e:
         await display_message(f"Failed to initialize one or more Coddy services: {e}", "error")
@@ -115,12 +125,14 @@ async def update_adaptive_prompt_suggestion():
     global adaptive_prompt_suggestion
     if pattern_oracle:
         try:
+            # This can eventually be enhanced by using user_profile_manager.profile.common_patterns
+            # For now, it continues to use pattern_oracle's frequency analysis.
             frequent_commands = await pattern_oracle.analyze_command_frequency(
                 num_top_commands=1, user_id=current_user_id
             )
             if frequent_commands:
                 most_frequent_cmd = frequent_commands[0]['command']
-                if most_frequent_cmd not in ["read", "write", "list", "exec", "checkpoint", "show", "vibe", "memory", "unit_tester", "help", "exit", "quit", "bye", "agent"]:
+                if most_frequent_cmd not in ["read", "write", "list", "exec", "checkpoint", "show", "vibe", "memory", "unit_tester", "help", "exit", "quit", "bye", "agent", "profile", "feedback"]:
                     adaptive_prompt_suggestion = f" (Try '{most_frequent_cmd}'?)"
                 else:
                     adaptive_prompt_suggestion = ""
@@ -204,6 +216,86 @@ async def handle_instruction(instruction: str):
             else:
                 await display_message("AutonomousAgent not initialized.", "error")
             return
+
+        # NEW: Handle 'profile' command
+        elif command_name == "profile":
+            if not user_profile_manager:
+                await display_message("UserProfile service not initialized.", "error")
+                return
+
+            if not args:
+                # Show current profile summary
+                if user_profile_manager.profile:
+                    profile_summary = user_profile_manager.profile.model_dump_json(indent=2)
+                    await display_message(f"Your Current Profile:\n{profile_summary}", "response")
+                else:
+                    await display_message("User profile not loaded.", "info")
+                command_logged = True
+            elif args[0].lower() == "get":
+                if len(args) < 2:
+                    await display_message("Usage: profile get <key>", "warning")
+                    return
+                key = args[1]
+                value = await user_profile_manager.get(key)
+                if value is not None:
+                    await display_message(f"Profile '{key}': {value}", "response")
+                else:
+                    await display_message(f"Profile key '{key}' not found or is None.", "info")
+                command_logged = True
+            elif args[0].lower() == "set":
+                if len(args) < 3:
+                    await display_message("Usage: profile set <key> <value>", "warning")
+                    await display_message("Note: For lists/dicts, provide as JSON string (e.g., '[\"Python\"]' or '{\"indent\": 4}')", "info")
+                    return
+                key = args[1]
+                value_str = " ".join(args[2:])
+                try:
+                    # Attempt to parse value as JSON (for lists/dicts)
+                    value = json.loads(value_str)
+                except json.JSONDecodeError:
+                    # If not JSON, treat as a string or attempt type conversion
+                    if value_str.lower() == 'true':
+                        value = True
+                    elif value_str.lower() == 'false':
+                        value = False
+                    elif value_str.isdigit():
+                        value = int(value_str)
+                    elif value_str.replace('.', '', 1).isdigit():
+                        value = float(value_str)
+                    else:
+                        value = value_str # Keep as string
+                
+                await user_profile_manager.set(key, value)
+                await display_message(f"Profile '{key}' set to '{value}'.", "success")
+                command_logged = True
+            elif args[0].lower() == "clear":
+                await user_profile_manager.clear_profile()
+                await display_message("User profile reset to default.", "success")
+                command_logged = True
+            else:
+                await display_message("Usage: profile [get <key>|set <key> <value>|clear]", "warning")
+            return # Exit after handling profile command
+
+        # NEW: Handle 'feedback' command
+        elif command_name == "feedback":
+            if not user_profile_manager:
+                await display_message("UserProfile service not initialized.", "error")
+                return
+            if not args or not args[0].isdigit():
+                await display_message("Usage: feedback <rating (1-5)> [comment]", "warning")
+                return
+            
+            rating = int(args[0])
+            if not (1 <= rating <= 5):
+                await display_message("Rating must be between 1 and 5.", "warning")
+                return
+            
+            comment = " ".join(args[1:]) if len(args) > 1 else None
+            
+            await user_profile_manager.add_feedback(rating=rating, comment=comment)
+            await display_message(f"Thank you for your feedback (Rating: {rating})!", "success")
+            command_logged = True
+            return # Exit after handling feedback command
 
         # Existing direct command handlers
         elif command_name == "read":
@@ -386,18 +478,20 @@ async def handle_instruction(instruction: str):
 
         elif command_name == "help":
             await display_message("\n--- Coddy Commands ---", "response")
-            await display_message("  agent <instruction>     - Execute a high-level instruction using the autonomous agent.", "response")
-            await display_message("  read <file>             - Read the content of a file.", "response")
-            await display_message("  write <file> <content>  - Write content to a file.", "response")
-            await display_message("  list [directory]        - List files in a directory.", "response")
-            await display_message("  exec <command>          - Execute a shell command.", "response")
+            await display_message("  agent <instruction>       - Execute a high-level instruction using the autonomous agent.", "response")
+            await display_message("  read <file>               - Read the content of a file.", "response")
+            await display_message("  write <file> <content>    - Write content to a file.", "response")
+            await display_message("  list [directory]          - List files in a directory.", "response")
+            await display_message("  exec <command>            - Execute a shell command.", "response")
             await display_message("  checkpoint save|load <name> - Save or load a session checkpoint.", "response")
-            await display_message("  show context            - Display the loaded user context.", "response")
+            await display_message("  show context              - Display the loaded user context.", "response")
             await display_message("  vibe [set <description>|clear] - Manage the current vibe/focus.", "response")
-            await display_message("  memory [search <query>] - Interact with long-term memory.", "response")
-            await display_message("  unit_tester <file>      - Generate and optionally run unit tests for a file.", "response")
-            await display_message("  help                    - Show this help message.", "response")
-            await display_message("  exit, quit, bye         - Exit the CLI.", "response")
+            await display_message("  memory [search <query>]   - Interact with long-term memory.", "response")
+            await display_message("  profile [get <key>|set <key> <value>|clear] - Manage your user profile preferences.", "response") # NEW: Profile help
+            await display_message("  feedback <rating (1-5)> [comment] - Provide feedback on Coddy's last interaction.", "response") # NEW: Feedback help
+            await display_message("  unit_tester <file>        - Generate and optionally run unit tests for a file.", "response")
+            await display_message("  help                      - Show this help message.", "response")
+            await display_message("  exit, quit, bye           - Exit the CLI.", "response")
             await display_message("---", "response")
             command_logged = True
 
@@ -426,14 +520,14 @@ async def handle_instruction(instruction: str):
                 await log_error(f"Memory logging failed for command: {original_instruction}", exc_info=True)
         elif command_logged and memory_service:
             if original_instruction != instruction:
-                 try:
-                    await memory_service.store_memory(
-                        content={"type": "top_level_command_outcome", "command": command_name, "full_instruction": original_instruction},
-                        tags=["cli_command", "top_level", command_name]
-                    )
-                 except Exception as e:
-                    await display_message(f"Failed to log original command to memory: {e}", "error")
-                    await log_error(f"Memory logging failed for original command: {original_instruction}", exc_info=True)
+                    try:
+                        await memory_service.store_memory(
+                            content={"type": "top_level_command_outcome", "command": command_name, "full_instruction": original_instruction},
+                            tags=["cli_command", "top_level", command_name]
+                        )
+                    except Exception as e:
+                        await display_message(f"Failed to log original command to memory: {e}", "error")
+                        await log_error(f"Memory logging failed for original command: {original_instruction}", exc_info=True)
 
 
 async def start_cli():
@@ -447,17 +541,22 @@ async def start_cli():
     await display_message("Type 'exit' to quit.", "info")
     await display_message(f"User ID: {current_user_id}, Session ID: {current_session_id}", "info")
 
-    while True:
-        try:
-            prompt_text = await _get_cli_prompt()
-            instruction = await asyncio.to_thread(input, prompt_text)
-            await handle_instruction(instruction)
-            await update_adaptive_prompt_suggestion()
-        except (KeyboardInterrupt, EOFError):
-            await display_message("\nExiting Coddy CLI. Goodbye!", "info")
-            break
-        except Exception as e:
-            await display_message(f"\nAn unexpected error occurred in the main loop: {e}", "error")
-            await log_error("Main CLI loop error", exc_info=True)
-            break
-
+    try:
+        while True:
+            try:
+                prompt_text = await _get_cli_prompt()
+                instruction = await asyncio.to_thread(input, prompt_text)
+                await handle_instruction(instruction)
+                await update_adaptive_prompt_suggestion()
+            except (KeyboardInterrupt, EOFError):
+                await display_message("\nExiting Coddy CLI. Goodbye!", "info")
+                break
+            except Exception as e:
+                await display_message(f"\nAn unexpected error occurred in the main loop: {e}", "error")
+                await log_error("Main CLI loop error", exc_info=True)
+                break
+    finally: # NEW: Ensure services are closed on exit
+        if memory_service:
+            await memory_service.close()
+        if user_profile_manager:
+            await user_profile_manager.close()

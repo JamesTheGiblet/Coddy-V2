@@ -1,4 +1,4 @@
-# Coddy: The Sentient Loop (Async to the Bone) - Development RoadmapThis roadmap details the phased development of Coddy, a modular, CLI-based and dashboard-enabled AI dev partner with deep memory, proactive planning, creative abilities, and self-improvement. The core philosophy is "MERN-native, Async-first, Chaos-aware, Memory-rich, CLI to Cloud", ensuring a resilient, intelligent, and fluid developer experience from the outset.
+# Coddy: The Sentient Loop (Async to the Bone) - Development RoadmapThis roadmap details the phased development of Coddy, a modular, CLI-based and dashboard-enabled AI dev partner with deep memory, proactive planning, creative abilities, and self-improvement. The core philosophy is "MERN-native, Async-first, Chaos-aware, Memory-rich, CLI to Cloud", ensuring a resilient, intelligent, and fluid developer experience from the outset
 
 ## Overarching Philosophy
 
@@ -13,12 +13,12 @@
 These are the core pillars to be established from the very beginning, ensuring an async-native, MERN-compatible foundation.
 
 * **Core Backend (Coddy API / Async Architecture)**
-    * Express server scaffold with routes for memory, roadmap, pattern analysis.
-    * Refactor backend into async/await native services.
+  * Express server scaffold with routes for memory, roadmap, pattern analysis.
+  * Refactor backend into async/await native services.
 * **Data Persistence (Mongo Memory)**
-    * Replace JSON with MongoDB for long-term memory + bug logs.
+  * Replace JSON with MongoDB for long-term memory + bug logs.
 * **Frontend Shell (React CLI Shell)**
-    * React terminal-style UI for interactive Coddy dashboard.
+  * React terminal-style UI for interactive Coddy dashboard.
 
 ---
 
@@ -229,7 +229,7 @@ These are the core pillars to be established from the very beginning, ensuring a
 **Success:** The agent can produce robust Python functions, automatically generate Streamlit UIs, and refactor code through simple CLI commands, streamlining the development workflow.
 
 **Tasks:**
- 
+
 **Implement Advanced `code_gen` Module:**
      [x] This enhances the `CodeGenerator` to produce more robust Python functions and lays the groundwork for more complex code manipulations.
 **Implement Autogen Web UI (Proof of Concept):**
@@ -339,7 +339,7 @@ These are the core pillars to be established from the very beginning, ensuring a
 * **My Evaluation:** The need for these tests is critical. The purpose is to ensure Coddy's core functionality is reliably exposed via an API and can be easily deployed. This phase transitions Coddy from a standalone application to a scalable service, making foundational API stability and containerization crucial for future growth and cloud deployment.
 
 ---
-##### REVIEW #####
+
 ### Phase 13: 💻 The Environment Integrator (IDE & Shell)
 
 **Goal:** Deepen Coddy’s integration with developer environments by providing seamless access to its features within IDEs and shells.
@@ -776,6 +776,7 @@ These are the core pillars to be established from the very beginning, ensuring a
      [ ] Add CLI commands: loop start, loop commit, loop reflect.
 
 ### AI-Guided Quality & Value Evaluation: Phase 27
+
 * **Tests Created:** Unit and integration tests for clone output sync, lab isolation safety, and changelog accuracy. Proactive prompt evaluations to see if corrections are reducing over time and if vibe refinements are sticking. User studies to determine if "clone delegation" reduces mental load and enhances creative flow.
 * **My Evaluation:** The need for these upgrades is pivotal. They don't just expand Coddy’s abilities — they make it feel alive with your methodology. These features are all about flow, modularity, and resonance. You're creating a dev studio in a single interface. We’re not building tools anymore — we’re building instruments for a code symphony.
 
