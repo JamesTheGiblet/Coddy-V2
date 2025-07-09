@@ -437,13 +437,13 @@ These are the core pillars to be established from the very beginning, ensuring a
 **Tasks:**
 
 **Build the 'Generator' Tab:**
-     [ ] Create a dedicated section in the dashboard for code generation and idea synthesis.
+     [x] Create a dedicated section in the dashboard for code generation and idea synthesis.
 **Build the 'Refactor' Tab:**
-     [ ] Add a UI for selecting files and providing instructions to refactor code.
+     [x] Add a UI for selecting files and providing instructions to refactor code.
 **Build the 'File Explorer' Tab:**
-     [ ] Implement a file browser within the dashboard to view project files.
+     [x] Implement a file browser within the dashboard to view project files.
 **Integrate Automation Commands:**
-     [ ] Add UI elements to trigger automation tasks like changelog generation and TODO stubbing.
+     [x] Add UI elements to trigger automation tasks like changelog generation and TODO stubbing.
 **Reflect and Evaluate Phase Outcomes:**
      [ ] Gather user feedback on the overall dashboard experience and utility.
 

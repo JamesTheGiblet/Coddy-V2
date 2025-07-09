@@ -28,10 +28,11 @@ def run_async_in_streamlit(coro_factory):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
     
-    # If the loop is closed, create a new one. This is a robust fallback.
+    # If the loop.is_closed() is True, it means the event loop was closed
+    # and we need to create a new one for subsequent async operations.
     if loop.is_closed():
         loop = asyncio.new_event_loop()
-        asyncio.set_set_event_loop(loop)
+        asyncio.set_event_loop(loop)
 
     # Create the coroutine within the current active loop context
     coro = coro_factory()
@@ -273,17 +274,17 @@ custom_css = """
 
     /* Markdown elements for better readability */
     p {
-        line-height: 1.6;
-        margin-bottom: 1rem;
+        line_height: 1.6;
+        margin_bottom: 1rem;
     }
     a {
         color: #00e5ff; /* Neon blue links */
-        text-decoration: none;
+        text_decoration: none;
         transition: color 0.3s ease;
     }
     a:hover {
         color: #e94560; /* Pink on hover */
-        text-decoration: underline;
+        text_decoration: underline;
     }
 </style>
 """
@@ -303,8 +304,8 @@ st.markdown("Your AI Dev Companion, Reimagined. (API-First Client)")
 
 # --- Sidebar Navigation ---
 st.sidebar.title("Navigation")
-# Added "Personalization" to the navigation
-page = st.sidebar.radio("Go to", ["Roadmap", "File Explorer", "Workspace", "Personalization", "Coming Soon..."])
+# Added "Automation" to the navigation
+page = st.sidebar.radio("Go to", ["Roadmap", "File Explorer", "Workspace", "Refactor", "Automation", "Personalization", "Coming Soon..."])
 
 # --- Main Content Area ---
 if page == "Roadmap":
@@ -469,6 +470,149 @@ elif page == "Workspace":
                     st.error(f"⚠️ API Error ({e.response.status_code}): {e.response.json().get('detail', 'An API error occurred.')}")
                 except Exception as e:
                     st.error(f"🔥 An unexpected error occurred: {e}")
+
+elif page == "Refactor": # NEW: Refactor Page
+    st.header("♻️ Code Refactoring")
+    st.write("Provide instructions to refactor existing code files.")
+
+    # Initialize user_profile if not already loaded (important for personalization)
+    if 'user_profile' not in st.session_state:
+        st.session_state.user_profile = {} # Initialize empty profile
+        with st.spinner("Loading user profile for personalization..."):
+            try:
+                st.session_state.user_profile = run_async_in_streamlit(lambda: dashboard_api.get_user_profile())
+            except httpx.RequestError:
+                st.warning("Could not connect to Coddy API to load user profile. Personalization may be limited.")
+            except httpx.HTTPStatusError as e:
+                st.warning(f"API Error loading user profile ({e.response.status_code}): {e.response.json().get('detail', 'An API error occurred.')}. Personalization may be limited.")
+            except Exception as e:
+                st.warning(f"An unexpected error occurred loading user profile: {e}. Personalization may be limited.")
+
+    refactor_file_path = st.text_input("Enter the path to the file you want to refactor:", key="refactor_file_path")
+    refactor_instructions = st.text_area("Describe how you want to refactor the code (e.g., 'extract method for X', 'rename variable Y to Z', 'improve readability'):", height=150, key="refactor_instructions")
+
+    if st.button("Refactor Code", key="refactor_button"):
+        if not refactor_file_path.strip():
+            st.error("Please provide a file path to refactor.")
+        elif not refactor_instructions.strip():
+            st.error("Please provide refactoring instructions.")
+        else:
+            with st.spinner(f"Refactoring '{refactor_file_path}'..."):
+                try:
+                    # First, read the original content of the file
+                    original_content = run_async_in_streamlit(lambda: dashboard_api.read_file(refactor_file_path))
+                    if not original_content:
+                        st.error(f"Could not read content from '{refactor_file_path}'. Please ensure the file exists and is readable.")
+                        st.stop()
+
+                    # Call the refactor API
+                    refactored_code_response = run_async_in_streamlit(lambda: dashboard_api.refactor_code(
+                        file_path=refactor_file_path,
+                        original_code=original_content,
+                        instructions=refactor_instructions,
+                        user_profile=st.session_state.user_profile
+                    ))
+                    
+                    refactored_code = refactored_code_response.get("refactored_code", "")
+
+                    if refactored_code:
+                        st.subheader("Refactored Code Preview:")
+                        st.code(refactored_code, language="python") # Assuming Python, can be dynamic later
+
+                        # Option to write the refactored code back to the file
+                        if st.checkbox(f"Apply refactored code to '{refactor_file_path}'?", key="apply_refactor_checkbox"):
+                            if st.button("Confirm Apply Refactoring", key="confirm_apply_refactor_button"):
+                                with st.spinner(f"Applying refactored code to '{refactor_file_path}'..."):
+                                    write_message = run_async_in_streamlit(lambda: dashboard_api.write_file(refactor_file_path, refactored_code))
+                                    st.success(write_message)
+                                    st.success(f"Refactoring applied to '{refactor_file_path}' successfully!")
+                    else:
+                        st.warning("Refactoring operation returned no changes or an empty result.")
+
+                except httpx.RequestError:
+                    st.error("🚨 Connection Error: Could not connect to Coddy API. Is the backend running?")
+                except httpx.HTTPStatusError as e:
+                    detail = e.response.json().get('detail', 'An API error occurred.')
+                    st.error(f"⚠️ API Error ({e.response.status_code}): {detail}")
+                except Exception as e:
+                    st.error(f"🔥 An unexpected error occurred during refactoring: {e}")
+
+elif page == "Automation": # NEW: Automation Page
+    st.header("⚙️ Automation Tools")
+    st.write("Trigger automated tasks to streamline your development workflow.")
+
+    # Initialize user_profile if not already loaded (important for personalization)
+    if 'user_profile' not in st.session_state:
+        st.session_state.user_profile = {} # Initialize empty profile
+        with st.spinner("Loading user profile for personalization..."):
+            try:
+                st.session_state.user_profile = run_async_in_streamlit(lambda: dashboard_api.get_user_profile())
+            except httpx.RequestError:
+                st.warning("Could not connect to Coddy API to load user profile. Personalization may be limited.")
+            except httpx.HTTPStatusError as e:
+                st.warning(f"API Error loading user profile ({e.response.status_code}): {e.response.json().get('detail', 'An API error occurred.')}. Personalization may be limited.")
+            except Exception as e:
+                st.warning(f"An unexpected error occurred loading user profile: {e}. Personalization may be limited.")
+
+    st.subheader("Generate Changelog")
+    st.write("Automatically generate a changelog based on recent Git commits.")
+    changelog_path = st.text_input("Enter output file path for changelog (e.g., CHANGELOG.md):", value="CHANGELOG.md", key="changelog_path")
+    if st.button("Generate Changelog", key="generate_changelog_button"):
+        if not changelog_path.strip():
+            st.error("Please provide an output file path for the changelog.")
+        else:
+            with st.spinner("Generating changelog..."):
+                try:
+                    changelog_response = run_async_in_streamlit(lambda: dashboard_api.generate_changelog(
+                        output_file=changelog_path,
+                        user_profile=st.session_state.user_profile
+                    ))
+                    generated_changelog = changelog_response.get("changelog_content", "")
+                    if generated_changelog:
+                        st.success(f"Changelog generated and saved to '{changelog_path}'!")
+                        st.subheader("Generated Changelog Preview:")
+                        st.code(generated_changelog, language="markdown")
+                    else:
+                        st.warning("Changelog generation returned empty content.")
+                except httpx.RequestError:
+                    st.error("🚨 Connection Error: Could not connect to Coddy API. Is the backend running?")
+                except httpx.HTTPStatusError as e:
+                    detail = e.response.json().get('detail', 'An API error occurred.')
+                    st.error(f"⚠️ API Error ({e.response.status_code}): {detail}")
+                except Exception as e:
+                    st.error(f"🔥 An unexpected error occurred during changelog generation: {e}")
+
+    st.markdown("---")
+    st.subheader("Generate TODO Stubs")
+    st.write("Scan files for TODO comments and generate detailed stubs or issues.")
+    todo_scan_path = st.text_input("Enter directory/file path to scan for TODOs (e.g., . or my_module.py):", value=".", key="todo_scan_path")
+    todo_output_file = st.text_input("Enter output file path for TODO stubs (e.g., TODO_STUBS.md):", value="TODO_STUBS.md", key="todo_output_file")
+    if st.button("Generate TODO Stubs", key="generate_todo_stubs_button"):
+        if not todo_scan_path.strip() or not todo_output_file.strip():
+            st.error("Please provide both a scan path and an output file path for TODO stubs.")
+        else:
+            with st.spinner("Generating TODO stubs..."):
+                try:
+                    todo_stubs_response = run_async_in_streamlit(lambda: dashboard_api.generate_todo_stubs(
+                        scan_path=todo_scan_path,
+                        output_file=todo_output_file,
+                        user_profile=st.session_state.user_profile
+                    ))
+                    generated_stubs = todo_stubs_response.get("stubs_content", "")
+                    if generated_stubs:
+                        st.success(f"TODO stubs generated and saved to '{todo_output_file}'!")
+                        st.subheader("Generated TODO Stubs Preview:")
+                        st.code(generated_stubs, language="markdown")
+                    else:
+                        st.warning("TODO stub generation returned empty content.")
+                except httpx.RequestError:
+                    st.error("🚨 Connection Error: Could not connect to Coddy API. Is the backend running?")
+                except httpx.HTTPStatusError as e:
+                    detail = e.response.json().get('detail', 'An API error occurred.')
+                    st.error(f"⚠️ API Error ({e.response.status_code}): {detail}")
+                except Exception as e:
+                    st.error(f"🔥 An unexpected error occurred during TODO stub generation: {e}")
+
 
 elif page == "Personalization": # NEW: Personalization Page
     st.header("✨ Your Personalization Settings")
