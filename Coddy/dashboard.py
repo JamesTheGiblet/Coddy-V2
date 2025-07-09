@@ -31,7 +31,7 @@ def run_async_in_streamlit(coro_factory):
     # If the loop is closed, create a new one. This is a robust fallback.
     if loop.is_closed():
         loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        asyncio.set_set_event_loop(loop)
 
     # Create the coroutine within the current active loop context
     coro = coro_factory()
@@ -89,7 +89,11 @@ async def execute_subtask(subtask: str):
             
             st.info(f"Generating code with prompt: '{prompt}' and saving to '{output_file}'...")
             with st.spinner(f"Generating code for '{output_file}'..."):
-                generated_code_response = await dashboard_api.generate_code(prompt)
+                # Pass the user profile to the generate_code API call
+                generated_code_response = await dashboard_api.generate_code(
+                    prompt, 
+                    user_profile=st.session_state.user_profile if 'user_profile' in st.session_state else {}
+                )
                 generated_code = generated_code_response.get("code", "")
                 
                 if generated_code:
@@ -377,16 +381,30 @@ elif page == "File Explorer":
                 st.error(f"🔥 An unexpected error occurred: {e}")
 
 elif page == "Workspace":
+    st.header("🧠 Coddy AI Assistant")
+    st.write("Enter high-level instructions or complex tasks for Coddy to decompose and execute.")
+    
+    # Initialize session state for subtasks and user profile
+    if 'subtasks' not in st.session_state:
+        st.session_state.subtasks = []
+    if 'user_profile' not in st.session_state:
+        st.session_state.user_profile = {} # Initialize empty profile
+
+    # Load user profile if not already loaded (e.g., if user navigates directly to Workspace)
+    if not st.session_state.user_profile:
+        with st.spinner("Loading user profile for personalization..."):
+            try:
+                st.session_state.user_profile = run_async_in_streamlit(lambda: dashboard_api.get_user_profile())
+            except httpx.RequestError:
+                st.warning("Could not connect to Coddy API to load user profile. Personalization may be limited.")
+            except httpx.HTTPStatusError as e:
+                st.warning(f"API Error loading user profile ({e.response.status_code}): {e.response.json().get('detail', 'An API error occurred.')}. Personalization may be limited.")
+            except Exception as e:
+                st.warning(f"An unexpected error occurred loading user profile: {e}. Personalization may be limited.")
+
     tab_assistant, tab_writer = st.tabs(["🧠 AI Assistant", "📝 File Writer"])
 
     with tab_assistant:
-        st.header("🧠 Coddy AI Assistant")
-        st.write("Enter high-level instructions or complex tasks for Coddy to decompose and execute.")
-        
-        # Initialize session state for subtasks
-        if 'subtasks' not in st.session_state:
-            st.session_state.subtasks = []
-
         user_instruction = st.text_area("What do you want Coddy to do?", height=150, key="ai_instruction_input")
 
         if st.button("Decompose Task", key="decompose_button"):
@@ -396,8 +414,11 @@ elif page == "Workspace":
             else:
                 with st.spinner("Decomposing your instruction via API..."):
                     try:
-                        # Pass a lambda that returns the coroutine
-                        subtasks = run_async_in_streamlit(lambda: dashboard_api.decompose_task(user_instruction))
+                        # Pass the user profile to the decompose_task API call
+                        subtasks = run_async_in_streamlit(lambda: dashboard_api.decompose_task(
+                            user_instruction, 
+                            user_profile=st.session_state.user_profile
+                        ))
                         st.session_state.subtasks = subtasks
                     except httpx.RequestError:
                         st.session_state.subtasks = []
@@ -559,19 +580,25 @@ elif page == "Personalization": # NEW: Personalization Page
         st.markdown("---")
         st.subheader("Reset Profile")
         if st.button("Clear My Profile (Reset to Default)", key="clear_profile_button"):
-            if st.warning("Are you sure you want to clear your profile? This action cannot be undone."):
-                if st.button("Confirm Clear Profile", key="confirm_clear_profile_button"):
+            # Streamlit's button logic can be tricky with confirmations.
+            # A common pattern is to use st.session_state for confirmation states.
+            if st.session_state.get('confirm_clear', False):
+                if st.button("Confirm Clear Profile", key="confirm_clear_profile_button_actual"):
                     with st.spinner("Clearing profile..."):
                         try:
                             run_async_in_streamlit(lambda: dashboard_api.clear_user_profile())
                             st.session_state.user_profile = run_async_in_streamlit(lambda: dashboard_api.get_user_profile()) # Reload default
                             st.success("Profile reset to default!")
+                            st.session_state.confirm_clear = False # Reset confirmation
                         except httpx.RequestError:
                             st.error("🚨 Connection Error: Could not connect to Coddy API. Is the backend running?")
                         except httpx.HTTPStatusError as e:
                             st.error(f"⚠️ API Error ({e.response.status_code}): {e.response.json().get('detail', 'An API error occurred.')}")
                         except Exception as e:
                             st.error(f"🔥 An unexpected error occurred while clearing profile: {e}")
+            else:
+                st.warning("Are you sure you want to clear your profile? This action cannot be undone.")
+                st.session_state.confirm_clear = st.button("Yes, Clear Profile", key="confirm_clear_profile_button_prompt")
     else:
         st.info("Click 'Load My Profile' to view and manage your personalization settings.")
 
@@ -593,7 +620,11 @@ elif page == "Personalization": # NEW: Personalization Page
                         comment=feedback_comment
                     ))
                     st.success("Thank you for your feedback! It helps Coddy improve.")
-                    feedback_comment = "" # Clear comment box after submission
+                    # Clear the comment box by updating its key or value
+                    st.session_state.feedback_comment_input = "" 
+                    # Optionally reload profile to show updated feedback log
+                    if st.session_state.user_profile:
+                        st.session_state.user_profile = run_async_in_streamlit(lambda: dashboard_api.get_user_profile())
                 except httpx.RequestError:
                     st.error("🚨 Connection Error: Could not connect to Coddy API. Is the backend running?")
                 except httpx.HTTPStatusError as e:

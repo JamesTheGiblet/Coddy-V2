@@ -404,15 +404,15 @@ These are the core pillars to be established from the very beginning, ensuring a
 **Add Dashboard UI for Profile Management:**
      [x] Created a "Profile" tab in the Streamlit dashboard to view and set preferences.
 **Implement Dynamic Prompt Personalization:**
-     [ ] Automatically tailor AI prompts based on the user's profile and current context for more relevant results.
+     [x] Automatically tailor AI prompts based on the user's profile and current context for more relevant results.
 **Integrate `UserProfile` into `IdeaSynthesizer` and `CodeGenerator`:**
-     [ ] Modified core generation modules to accept and use `UserProfile` data.
+     [x] Modified core generation modules to accept and use `UserProfile` data.
 **Add Persona-Based Prompting to `IdeaSynthesizer`:**
-     [ ] Enhanced `IdeaSynthesizer` to use an `idea_synth_persona` profile setting to influence its response style.
+     [x] Enhanced `IdeaSynthesizer` to use an `idea_synth_persona` profile setting to influence its response style.
 **Create an Interaction Feedback Loop for Vibe Tuning:**
      [x] Allow users to easily provide feedback on Coddy's suggestions to refine its understanding of their 'vibe'.
 **Store Last AI Interaction in Memory:**
-     [ ] Modified `IdeaSynthesizer` and `CodeGenerator` to save a summary of their last output to session memory.
+     [x] Modified `IdeaSynthesizer` and `CodeGenerator` to save a summary of their last output to session memory.
 **Implement `UserProfile.add_feedback()` Method:**
      [x] Added functionality to `UserProfile` to store timestamped feedback entries (rating, comment, context).
 **Add `feedback` CLI Command:**

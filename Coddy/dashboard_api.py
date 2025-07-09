@@ -2,6 +2,7 @@
 
 import httpx
 import json
+from typing import Dict, Any, Optional, List
 
 # Base URL for your Coddy backend API
 API_BASE_URL = "http://127.0.0.1:8000/api"
@@ -37,22 +38,34 @@ async def write_file(path: str, content: str):
         response.raise_for_status()
         return response.json().get("message", "File write operation completed.")
 
-async def decompose_task(instruction: str):
-    """Decomposes a high-level instruction into subtasks via the Coddy API."""
+async def decompose_task(instruction: str, user_profile: Optional[Dict[str, Any]] = None):
+    """
+    Decomposes a high-level instruction into subtasks via the Coddy API,
+    passing the user's profile for personalization.
+    """
     async with httpx.AsyncClient() as client:
+        payload = {"instruction": instruction}
+        if user_profile:
+            payload["user_profile"] = user_profile # Include user profile in the request
+        
         response = await client.post(
             f"{API_BASE_URL}/tasks/decompose",
-            json={"instruction": instruction}
+            json=payload
         )
         response.raise_for_status()
         return response.json() # This should be a list of strings
 
-async def generate_code(prompt: str, context: dict = None):
-    """Generates code based on a prompt via the Coddy API."""
+async def generate_code(prompt: str, context: Optional[Dict[str, Any]] = None, user_profile: Optional[Dict[str, Any]] = None):
+    """
+    Generates code based on a prompt via the Coddy API,
+    passing the user's profile for personalization.
+    """
     async with httpx.AsyncClient() as client:
         payload = {"prompt": prompt}
         if context:
             payload["context"] = context
+        if user_profile:
+            payload["user_profile"] = user_profile # Include user profile in the request
         
         response = await client.post(
             f"{API_BASE_URL}/code/generate",
@@ -60,3 +73,43 @@ async def generate_code(prompt: str, context: dict = None):
         )
         response.raise_for_status()
         return response.json() # This should be a dictionary with a "code" key
+
+async def get_user_profile() -> Dict[str, Any]:
+    """Fetches the current user profile from the Coddy API."""
+    async with httpx.AsyncClient() as client:
+        response = await client.get(f"{API_BASE_URL}/profile")
+        response.raise_for_status()
+        return response.json()
+
+async def set_user_profile(profile_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Updates the user profile via the Coddy API."""
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{API_BASE_URL}/profile/set",
+            json={"profile_data": profile_data}
+        )
+        response.raise_for_status()
+        return response.json()
+
+async def clear_user_profile() -> Dict[str, Any]:
+    """Resets the user profile to default via the Coddy API."""
+    async with httpx.AsyncClient() as client:
+        response = await client.post(f"{API_BASE_URL}/profile/clear")
+        response.raise_for_status()
+        return response.json()
+
+async def add_feedback(rating: int, comment: Optional[str] = None, context_id: Optional[str] = None) -> Dict[str, Any]:
+    """Submits user feedback via the Coddy API."""
+    async with httpx.AsyncClient() as client:
+        payload = {"rating": rating}
+        if comment:
+            payload["comment"] = comment
+        if context_id:
+            payload["context_id"] = context_id
+        
+        response = await client.post(
+            f"{API_BASE_URL}/feedback/add",
+            json=payload
+        )
+        response.raise_for_status()
+        return response.json()
