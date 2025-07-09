@@ -217,8 +217,7 @@ async def generate_code_endpoint(request: CodeGenerationRequest):
     try:
         generated_code = await generator.generate_code(
             prompt=request.prompt,
-            context=request.context,
-            user_id=DEFAULT_USER_ID
+            context=request.context # Removed user_id=DEFAULT_USER_ID
         )
         return {"code": generated_code}
     except Exception as e:

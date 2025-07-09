@@ -5,15 +5,39 @@ import asyncio
 import shlex
 import httpx # Import httpx to catch specific exceptions
 import dashboard_api # Import the API client we just created
+import nest_asyncio # Import nest_asyncio
+import os # Import the os module for path operations
+
+# Apply nest_asyncio to allow nested event loops, which is common in environments
+# like Streamlit where an event loop might already be running.
+nest_asyncio.apply()
 
 # --- Helper Function for Async Calls in Streamlit ---
-# Streamlit runs synchronously, so we need a way to execute async functions.
-# This function wraps an async function call, allowing it to be awaited.
-def run_async_in_streamlit(async_func):
+def run_async_in_streamlit(coro_factory):
     """
-    Runs an asynchronous function within the synchronous Streamlit environment.
+    Runs an asynchronous coroutine within the synchronous Streamlit environment.
+    Takes a callable (coro_factory) that returns the coroutine to be run.
+    This ensures the coroutine is created within the correct event loop context.
     """
-    return asyncio.run(async_func)
+    try:
+        # Get the current event loop (patched by nest_asyncio)
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        # If no loop is running, create a new one. This is a fallback.
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
+    # If the loop is closed, create a new one. This is a robust fallback.
+    if loop.is_closed():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+    # Create the coroutine within the current active loop context
+    coro = coro_factory()
+    
+    # Run the coroutine until complete
+    return loop.run_until_complete(coro)
+
 
 async def execute_subtask(subtask: str):
     """Parses and executes a single subtask string via the dashboard_api."""
@@ -53,6 +77,39 @@ async def execute_subtask(subtask: str):
                 items = await dashboard_api.list_files(path)
                 st.json({"directory": path, "items": items})
             st.success(f"Listed contents of `{path}`.")
+        
+        elif command == "generate_code":
+            if len(args) < 2:
+                st.error("`generate_code` command requires a prompt and an output file path.")
+                return
+            
+            prompt = args[0]
+            output_file = args[1]
+            
+            st.info(f"Generating code with prompt: '{prompt}' and saving to '{output_file}'...")
+            with st.spinner(f"Generating code for '{output_file}'..."):
+                generated_code_response = await dashboard_api.generate_code(prompt)
+                generated_code = generated_code_response.get("code", "")
+                
+                if generated_code:
+                    st.success("Code generated successfully. Now writing to file...")
+                    # Use the existing write_file API to save the generated code
+                    write_message = await dashboard_api.write_file(output_file, generated_code)
+                    st.success(write_message)
+                    st.code(generated_code, language="python") # Display generated code
+                else:
+                    st.error("Code generation returned empty content.")
+
+        elif command == "ask_question":
+            if not args:
+                st.error("`ask_question` command requires a question string.")
+                return
+            question = " ".join(args)
+            st.info(f"🤔 Coddy asks: {question}")
+            # Clear subtasks so "Execute Plan" button disappears and user can input new instruction
+            st.session_state.subtasks = [] 
+            st.stop() # Stop execution of further subtasks for this turn
+
         else:
             st.warning(f"Command `{command}` is not supported for automatic execution in the dashboard yet.")
     except Exception as e:
@@ -139,7 +196,7 @@ custom_css = """
         padding: 0.8rem 1.8rem; /* Larger padding */
         font-weight: 600; /* Semibold */
         transition: background-color 0.3s ease, transform 0.2s ease, box-shadow 0.3s ease, border-color 0.3s ease;
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4); /* Deeper shadow */
+        box_shadow: 0 4px 10px rgba(0, 0, 0, 0.4); /* Deeper shadow */
     }
     .stButton > button:hover {
         background-color: #ba374e; /* Darker accent on hover */
@@ -211,17 +268,17 @@ custom_css = """
 
     /* Markdown elements for better readability */
     p {
-        line-height: 1.6;
-        margin-bottom: 1rem;
+        line_height: 1.6;
+        margin_bottom: 1rem;
     }
     a {
         color: #00e5ff; /* Neon blue links */
-        text-decoration: none;
+        text_decoration: none;
         transition: color 0.3s ease;
     }
     a:hover {
         color: #e94560; /* Pink on hover */
-        text-decoration: underline;
+        text_decoration: underline;
     }
 </style>
 """
@@ -253,8 +310,8 @@ if page == "Roadmap":
     if st.button("Load Roadmap from API"):
         with st.spinner("Fetching roadmap..."):
             try:
-                # Call the async function from dashboard_api.py
-                roadmap_content = run_async_in_streamlit(dashboard_api.get_roadmap())
+                # Pass a lambda that returns the coroutine
+                roadmap_content = run_async_in_streamlit(lambda: dashboard_api.get_roadmap())
                 st.markdown(roadmap_content) # Render Markdown content
             except httpx.RequestError:
                 st.error("🚨 Connection Error: Could not connect to Coddy API. Please ensure the backend server is running at `http://127.0.0.1:8000`.")
@@ -269,12 +326,25 @@ elif page == "File Explorer":
 
     col1, col2 = st.columns([0.7, 0.3])
     with col1:
-        current_path = st.text_input("Enter directory path to list:", value=".")
+        # Provide clearer instruction for relative paths
+        current_path = st.text_input(
+            "Enter directory path to list (relative to the 'Coddy' project directory, e.g., '.', 'core', 'backend'):",
+            value="."
+        )
     with col2:
         if st.button("List Contents"):
+            # Client-side validation for path
+            if os.path.isabs(current_path):
+                st.error("Please enter a relative path. Absolute paths are not supported from the dashboard.")
+                st.stop() # Stop execution to prevent API call
+            if current_path.startswith(".."):
+                st.error("Accessing directories above the project root (e.g., '..') is not allowed.")
+                st.stop() # Stop execution to prevent API call
+
             with st.spinner(f"Listing contents of '{current_path}'..."):
                 try:
-                    files_and_dirs = run_async_in_streamlit(dashboard_api.list_files(current_path))
+                    # Pass a lambda that returns the coroutine
+                    files_and_dirs = run_async_in_streamlit(lambda: dashboard_api.list_files(current_path))
                     if files_and_dirs:
                         st.subheader(f"Contents of `{current_path}`:")
                         for item in files_and_dirs:
@@ -294,7 +364,8 @@ elif page == "File Explorer":
     if st.button("Read File Content"):
         with st.spinner(f"Reading '{file_to_read}'..."):
             try:
-                content = run_async_in_streamlit(dashboard_api.read_file(file_to_read))
+                # Pass a lambda that returns the coroutine
+                content = run_async_in_streamlit(lambda: dashboard_api.read_file(file_to_read))
                 st.success(f"Content of `{file_to_read}`:")
                 st.code(content, language="python") # Assuming Python code for now
             except httpx.RequestError:
@@ -324,8 +395,8 @@ elif page == "Workspace":
             else:
                 with st.spinner("Decomposing your instruction via API..."):
                     try:
-                        # Call the new API function instead of the local engine
-                        subtasks = run_async_in_streamlit(dashboard_api.decompose_task(user_instruction))
+                        # Pass a lambda that returns the coroutine
+                        subtasks = run_async_in_streamlit(lambda: dashboard_api.decompose_task(user_instruction))
                         st.session_state.subtasks = subtasks
                     except httpx.RequestError:
                         st.session_state.subtasks = []
@@ -347,7 +418,8 @@ elif page == "Workspace":
             
             if st.button("🚀 Execute Plan", key="execute_plan_button"):
                 with st.expander("Execution Log", expanded=True):
-                    run_async_in_streamlit(asyncio.gather(*(execute_subtask(subtask) for subtask in st.session_state.subtasks)))
+                    # Pass a lambda that returns asyncio.gather
+                    run_async_in_streamlit(lambda: asyncio.gather(*(execute_subtask(subtask) for subtask in st.session_state.subtasks)))
                     st.balloons()
                     st.success("Plan execution finished!")
 
@@ -361,11 +433,13 @@ elif page == "Workspace":
         if st.button("Write File", key="file_writer_button"):
             with st.spinner(f"Writing to '{write_path}'..."):
                 try:
-                    message = run_async_in_streamlit(dashboard_api.write_file(write_path, write_content))
+                    # Pass a lambda that returns the coroutine
+                    message = run_async_in_streamlit(lambda: dashboard_api.write_file(write_path, write_content))
                     st.success(message)
                     # Optionally, show the content after writing
                     if st.checkbox("Show content after writing?", key="show_content_checkbox"):
-                        read_back_content = run_async_in_streamlit(dashboard_api.read_file(write_path))
+                        # Pass a lambda that returns the coroutine
+                        read_back_content = run_async_in_streamlit(lambda: dashboard_api.read_file(write_path))
                         st.code(read_back_content)
                 except httpx.RequestError:
                     st.error("🚨 Connection Error: Could not connect to Coddy API. Is the backend running?")

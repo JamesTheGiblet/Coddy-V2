@@ -1,48 +1,17 @@
-# main.py
-import asyncio
-import click
-from core.ui_generator import UIGenerator
-from core.utils import write_file
-from core.plugin_manager import PluginManager
-from ui.cli import start_cli
+from fastapi import FastAPI
+from .api.routers import files
 
-@click.group(invoke_without_command=True)
-@click.pass_context
-def cli(ctx):
+app = FastAPI(
+    title="Coddy - The Sentient Loop",
+    description="Your async-native, memory-rich dev companion.",
+    version="2.0.0",
+)
+
+app.include_router(files.router)
+
+@app.get("/")
+async def root():
     """
-    Coddy V2: Your AI Dev Companion.
-    Run without a command to enter the interactive shell.
+    Root endpoint for the Coddy API.
     """
-    if ctx.invoked_subcommand is None:
-        asyncio.run(start_cli())
-
-@click.group()
-def build():
-    """Build various project artifacts."""
-    pass
-
-@build.command(name='ui')
-@click.argument('source_file', type=click.Path(exists=True, dir_okay=False))
-@click.argument('output_file', type=click.Path(dir_okay=False))
-def build_ui(source_file, output_file):
-    """
-    Generates a Streamlit UI from a Python data class.
-
-    SOURCE_FILE: Path to the Python file with a data class (e.g., models/user_profile_model.py).
-    OUTPUT_FILE: Path to write the generated Streamlit app (e.g., generated_ui.py).
-    """
-    click.echo(f"Building UI from '{source_file}'...")
-    generator = UIGenerator()
-    ui_code = generator.generate_from_file(source_file)
-    write_file(output_file, ui_code)
-    click.secho(f"Successfully generated UI at '{output_file}'", fg='green')
-    click.echo("To run it, make sure you have streamlit installed (`pip install streamlit pydantic`) and then run:")
-    click.secho(f"streamlit run {output_file}", fg='cyan')
-
-cli.add_command(build)
-
-if __name__ == '__main__':
-    # Discover and load plugins before running the CLI
-    plugin_manager = PluginManager()
-    plugin_manager.add_plugins_to_cli(cli)
-    cli()
+    return {"message": "Welcome to the Coddy API. Let's build something with vibe."}
