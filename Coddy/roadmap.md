@@ -396,13 +396,13 @@ These are the core pillars to be established from the very beginning, ensuring a
 **Tasks:**
 
 **Build an Evolving User Profile Model:**
-     [ ] Create a more sophisticated model of user preferences, coding style, and common patterns.
+     [x] Create a more sophisticated model of user preferences, coding style, and common patterns.
 **Design and Implement `UserProfile` Class with Memory Persistence:**
-     [ ] Created `core/user_profile.py` for storing and managing user-specific data, leveraging async persistence.
+     [x] Created `core/user_profile.py` for storing and managing user-specific data, leveraging async persistence.
 **Implement CLI Commands for User Profile Management:**
-     [ ] Implemented `profile get|set|clear` commands in the CLI.
+     [x] Implemented `profile get|set|clear` commands in the CLI.
 **Add Dashboard UI for Profile Management:**
-     [ ] Created a "Profile" tab in the Streamlit dashboard to view and set preferences.
+     [x] Created a "Profile" tab in the Streamlit dashboard to view and set preferences.
 **Implement Dynamic Prompt Personalization:**
      [ ] Automatically tailor AI prompts based on the user's profile and current context for more relevant results.
 **Integrate `UserProfile` into `IdeaSynthesizer` and `CodeGenerator`:**
@@ -410,15 +410,15 @@ These are the core pillars to be established from the very beginning, ensuring a
 **Add Persona-Based Prompting to `IdeaSynthesizer`:**
      [ ] Enhanced `IdeaSynthesizer` to use an `idea_synth_persona` profile setting to influence its response style.
 **Create an Interaction Feedback Loop for Vibe Tuning:**
-     [ ] Allow users to easily provide feedback on Coddy's suggestions to refine its understanding of their 'vibe'.
+     [x] Allow users to easily provide feedback on Coddy's suggestions to refine its understanding of their 'vibe'.
 **Store Last AI Interaction in Memory:**
      [ ] Modified `IdeaSynthesizer` and `CodeGenerator` to save a summary of their last output to session memory.
 **Implement `UserProfile.add_feedback()` Method:**
-     [ ] Added functionality to `UserProfile` to store timestamped feedback entries (rating, comment, context).
+     [x] Added functionality to `UserProfile` to store timestamped feedback entries (rating, comment, context).
 **Add `feedback` CLI Command:**
-     [ ] Created a CLI command for users to rate the last AI output and add comments.
+     [x] Created a CLI command for users to rate the last AI output and add comments.
 **Add Feedback UI to Dashboard:**
-     [ ] Integrated a section in the dashboard for users to view the last AI interaction and submit feedback (rating/comment).
+     [x] Integrated a section in the dashboard for users to view the last AI interaction and submit feedback (rating/comment).
 **Reflect and Evaluate Phase Outcomes:**
      [ ] Review how well the personalization features adapt to user preferences and feedback.
 
