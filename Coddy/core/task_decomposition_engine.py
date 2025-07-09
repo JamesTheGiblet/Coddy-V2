@@ -24,10 +24,10 @@ class TaskDecompositionEngine:
         self.llm = ChatGoogleGenerativeAI(
             model="gemini-pro", # Default model for decomposition
             temperature=0.7,    # Default creativity/randomness
-            google_api_key=os.getenv("GOOGLE_API_KEY")
+            GEMINI_API_KEY=os.getenv("GEMINI_API_KEY")
         )
-        if not os.getenv("GOOGLE_API_KEY"):
-            print("Warning: GOOGLE_API_KEY not found in environment variables. LLM calls for decomposition may fail.")
+        if not os.getenv("GEMINI_API_KEY"):
+            print("Warning: GEMINI_API_KEY not found in environment variables. LLM calls for decomposition may fail.")
 
 
     async def decompose(self, goal: str, user_profile: Optional[Dict[str, Any]] = None) -> list[str]:

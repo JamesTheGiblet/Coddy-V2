@@ -113,11 +113,15 @@ async def lifespan(app: FastAPI):
         services["memory_service"] = MemoryService(session_id=DEFAULT_SESSION_ID, user_id=DEFAULT_USER_ID, is_backend_core=True)
         
         # NEW: Initialize UserProfile
-        services["user_profile_manager"] = UserProfile(session_id=DEFAULT_SESSION_ID, user_id=DEFAULT_USER_ID)
+        services["user_profile_manager"] = UserProfile(
+            session_id=DEFAULT_SESSION_ID, 
+            user_id=DEFAULT_USER_ID,
+            memory_service=services["memory_service"]
+        )
         await services["user_profile_manager"].initialize() # Load profile data
 
         # Initialize VibeModeEngine with MemoryService and UserProfileManager
-        services["vibe_engine"] = VibeModeEngine(services["memory_service"], user_profile_manager=services["user_profile_manager"])
+        services["vibe_engine"] = VibeModeEngine(services["memory_service"], user_id=DEFAULT_USER_ID)
         await services["vibe_engine"].initialize() # Initialize VibeModeEngine to load its state
 
         # Initialize CodeGenerator with dependencies including user_profile_manager

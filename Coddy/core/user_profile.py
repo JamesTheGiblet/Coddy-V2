@@ -16,14 +16,15 @@ class UserProfile:
     for asynchronous MongoDB persistence.
     """
 
-    def __init__(self, session_id: str, user_id: str):
+    def __init__(self, session_id: str, user_id: str, memory_service: Optional[MemoryService] = None):
         """
-        Initializes the UserProfile with a session ID and user ID,
-        and sets up the MemoryService for persistence.
+        Initializes the UserProfile with a session ID and user ID.
+        If a MemoryService instance is provided, it will be used for persistence;
+        otherwise, a new one is created.
         """
         self.session_id = session_id
         self.user_id = user_id
-        self.memory_service = MemoryService(session_id=session_id, user_id=user_id)
+        self.memory_service = memory_service or MemoryService(session_id=session_id, user_id=user_id)
         self.profile: Optional[UserProfileModel] = None # Profile will be loaded asynchronously
 
     async def initialize(self):
