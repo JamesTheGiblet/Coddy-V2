@@ -74,6 +74,58 @@ async def generate_code(prompt: str, context: Optional[Dict[str, Any]] = None, u
         response.raise_for_status()
         return response.json() # This should be a dictionary with a "code" key
 
+async def refactor_code(file_path: str, original_code: str, instructions: str, user_profile: Optional[Dict[str, Any]] = None):
+    """Refactors code via the Coddy API."""
+    async with httpx.AsyncClient() as client:
+        payload = {
+            "file_path": file_path,
+            "original_code": original_code,
+            "instructions": instructions,
+        }
+        if user_profile:
+            payload["user_profile"] = user_profile
+        
+        response = await client.post(
+            f"{API_BASE_URL}/code/refactor",
+            json=payload,
+            timeout=120.0  # Allow longer timeout for potentially complex refactoring
+        )
+        response.raise_for_status()
+        return response.json()
+
+async def generate_changelog(output_file: str, user_profile: Optional[Dict[str, Any]] = None):
+    """Generates a changelog via the Coddy API."""
+    async with httpx.AsyncClient() as client:
+        payload = {"output_file": output_file}
+        if user_profile:
+            payload["user_profile"] = user_profile
+        
+        response = await client.post(
+            f"{API_BASE_URL}/automation/generate_changelog",
+            json=payload,
+            timeout=120.0 # Allow longer timeout for changelog generation
+        )
+        response.raise_for_status()
+        return response.json()
+
+async def generate_todo_stubs(scan_path: str, output_file: str, user_profile: Optional[Dict[str, Any]] = None):
+    """Generates TODO stubs for incomplete functions via the Coddy API."""
+    async with httpx.AsyncClient() as client:
+        payload = {
+            "scan_path": scan_path,
+            "output_file": output_file,
+        }
+        if user_profile:
+            payload["user_profile"] = user_profile
+        
+        response = await client.post(
+            f"{API_BASE_URL}/automation/generate_todo_stubs",
+            json=payload,
+            timeout=180.0 # Allow even longer for scanning multiple files
+        )
+        response.raise_for_status()
+        return response.json()
+
 async def get_user_profile() -> Dict[str, Any]:
     """Fetches the current user profile from the Coddy API."""
     async with httpx.AsyncClient() as client:

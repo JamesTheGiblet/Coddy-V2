@@ -41,7 +41,7 @@ class IdeaSynthesizer:
         self.llm = ChatGoogleGenerativeAI(
             model="gemini-pro", # Default model
             temperature=0.7,    # Default creativity/randomness, overridden later
-            GEMINI_API_KEY=os.getenv("GEMINI_API_KEY")
+            google_api_key=os.getenv("GEMINI_API_KEY")
         )
         if not os.getenv("GEMINI_API_KEY"):
             print("Warning: GEMINI_API_KEY not found in environment variables. LLM calls may fail.")
@@ -96,7 +96,7 @@ class IdeaSynthesizer:
         self.llm = ChatGoogleGenerativeAI(
             model=llm_model,
             temperature=llm_temperature,
-            GEMINI_API_KEY=os.getenv("GEMINI_API_KEY")
+            google_api_key=os.getenv("GEMINI_API_KEY")
         )
 
         messages = []
