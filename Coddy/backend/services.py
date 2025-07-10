@@ -1,4 +1,5 @@
-# Coddy/backend/services.py
+# C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\backend\services.py
+
 """
 Global service registry for the Coddy backend.
 

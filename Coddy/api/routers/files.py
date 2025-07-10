@@ -1,3 +1,5 @@
+# C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\api\routers\files.py
+
 import os
 from pathlib import Path
 from typing import Any, Dict

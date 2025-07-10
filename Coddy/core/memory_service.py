@@ -1,4 +1,5 @@
-# Coddy/core/memory_service.py
+# C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\core\memory_service.py
+
 import asyncio
 import httpx
 import json

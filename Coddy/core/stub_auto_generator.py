@@ -1,4 +1,5 @@
-# Coddy/core/stub_auto_generator.py
+# C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\core\stub_auto_generator.py
+
 from __future__ import annotations # NEW: Enable postponed evaluation of type annotations
 from datetime import datetime
 import os

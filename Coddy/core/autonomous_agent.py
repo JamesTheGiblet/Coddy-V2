@@ -1,4 +1,5 @@
-# core/autonomous_agent.py
+# C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\core\autonomous_agent.py
+
 import asyncio
 import shlex
 import sys

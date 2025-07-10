@@ -1,4 +1,4 @@
-#core/git_analyzer.py
+# C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\core\git_analyzer.py
 
 import asyncio
 import subprocess

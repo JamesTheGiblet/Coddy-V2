@@ -1,4 +1,5 @@
 # c:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\backend\api\routers\automation.py
+
 from fastapi import APIRouter, HTTPException
 from typing import Dict, Any, Optional
 

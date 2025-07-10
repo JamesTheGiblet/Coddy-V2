@@ -1,4 +1,5 @@
-# core/llm_provider.py
+# C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\core\llm_provider.py
+
 import os
 import requests
 import json

@@ -1,4 +1,5 @@
 # c:\Users\gilbe\Documents\GitHub\Coddy V2\Coddy/core/idea_synth.py
+
 from __future__ import annotations # NEW: Enable postponed evaluation of type annotations
 import asyncio
 import os

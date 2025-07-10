@@ -1,4 +1,5 @@
-# Coddy/core/pattern_oracle.py
+# C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\core\pattern_oracle.py
+
 import asyncio
 import sys
 import os

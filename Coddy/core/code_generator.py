@@ -1,4 +1,5 @@
-# Coddy/core/code_generator.py
+# C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\core\code_generator.py
+
 from __future__ import annotations # Enable postponed evaluation of type annotations
 import asyncio
 import os
