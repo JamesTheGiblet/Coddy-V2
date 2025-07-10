@@ -9,24 +9,35 @@ from dotenv import load_dotenv
 # Load environment variables from the .env file located one level up from backend
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
 
+# --- Path Setup ---
+# Add the project root to the Python path to allow for absolute imports.
+# This makes the backend runnable from any directory.
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
 from fastapi import FastAPI, APIRouter, HTTPException, Body
 from pydantic import BaseModel, Field
 
 try:
-    # Relative imports for core modules
-    from ..core.memory_service import MemoryService
-    from ..core.utility_functions import read_file, write_file, list_files
-    from ..core.logging_utility import log_info, log_warning, log_error, log_debug
-    from ..core.vibe_mode import VibeModeEngine
-    from ..core.code_generator import CodeGenerator
-    from ..core.task_decomposition_engine import TaskDecompositionEngine
-    from ..core.git_analyzer import GitAnalyzer
-    from ..core.user_profile import UserProfile # NEW: Import UserProfile
-    from ..core.changelog_generator import ChangelogGenerator # NEW: Import ChangelogGenerator
-    from ..core.stub_auto_generator import StubAutoGenerator # NEW: Import StubAutoGenerator
+    # Use absolute imports from the project root for consistency
+    from core.memory_service import MemoryService
+    from core.utility_functions import read_file, write_file, list_files
+    from core.logging_utility import log_info, log_warning, log_error, log_debug
+    from core.vibe_mode import VibeModeEngine
+    from core.code_generator import CodeGenerator
+    from core.task_decomposition_engine import TaskDecompositionEngine
+    from core.git_analyzer import GitAnalyzer
+    from core.user_profile import UserProfile
+    from core.changelog_generator import ChangelogGenerator
+    from core.stub_auto_generator import StubAutoGenerator
 except ImportError as e:
     print(f"FATAL ERROR: Could not import core modules required for FastAPI backend: {e}", file=sys.stderr)
     sys.exit(1)
+
+# Import Routers
+from backend.api.routers import automation
+from backend.services import services
 
 # --- Pydantic Models ---
 class FilePath(BaseModel):
@@ -67,21 +78,6 @@ class RefactorCodeRequest(BaseModel): # NEW: Model for refactoring requests
 class RefactorCodeResponse(BaseModel): # NEW: Model for refactoring responses
     refactored_code: str
 
-class ChangelogGenerationRequest(BaseModel): # NEW: Model for changelog generation
-    output_file: str
-    user_profile: Optional[Dict[str, Any]] = Field(None, description="User's personalization profile.")
-
-class ChangelogGenerationResponse(BaseModel): # NEW: Model for changelog response
-    changelog_content: str
-
-class TodoStubsGenerationRequest(BaseModel): # NEW: Model for TODO stubs generation
-    scan_path: str
-    output_file: str
-    user_profile: Optional[Dict[str, Any]] = Field(None, description="User's personalization profile.")
-
-class TodoStubsGenerationResponse(BaseModel): # NEW: Model for TODO stubs response
-    stubs_content: str
-
 class UserProfileData(BaseModel): # NEW: Model for setting user profile
     profile_data: Dict[str, Any]
 
@@ -100,13 +96,15 @@ class GitStatusResponse(BaseModel):
     log: List[Dict[str, Any]]
 
 # --- Lifespan Management (Modern Approach) ---
-services = {}
 DEFAULT_USER_ID = "api_user" # This will eventually come from authentication
 DEFAULT_SESSION_ID = "api_session_default" # This will eventually come from session management
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initializes core services when the FastAPI application starts."""
+    # Centralized model configuration to fix API version compatibility.
+    # 'gemini-pro' is not consistently found on the v1beta API. 'gemini-1.5-flash-latest' is a powerful and compatible alternative.
+    LLM_MODEL_NAME = "gemini-1.5-flash-latest"
     await log_info("Coddy Backend API: Initializing core services...")
     try:
         # Initialize MemoryService first as it's a dependency
@@ -127,6 +125,7 @@ async def lifespan(app: FastAPI):
         # Initialize CodeGenerator with dependencies including user_profile_manager
         # CodeGenerator's __init__ takes memory_service, vibe_engine, and user_profile_manager
         services["code_generator"] = CodeGenerator(
+            model_name=LLM_MODEL_NAME,
             memory_service=services["memory_service"],
             vibe_engine=services["vibe_engine"],
             user_profile_manager=services["user_profile_manager"]
@@ -134,13 +133,16 @@ async def lifespan(app: FastAPI):
         await services["code_generator"].initialize()
 
         # Initialize TaskDecompositionEngine (it now takes user_profile in decompose method)
-        services["task_decomposition_engine"] = TaskDecompositionEngine()
+        services["task_decomposition_engine"] = TaskDecompositionEngine(
+            model_name=LLM_MODEL_NAME
+        )
         
         # Initialize GitAnalyzer
         services["git_analyzer"] = GitAnalyzer()
 
         # NEW: Initialize Automation tools
         services["changelog_generator"] = ChangelogGenerator(
+            llm_provider=services["llm_provider"],
             memory_service=services["memory_service"],
             git_analyzer=services["git_analyzer"],
             user_profile_manager=services["user_profile_manager"]
@@ -159,10 +161,12 @@ async def lifespan(app: FastAPI):
     finally:
         await log_info("Coddy Backend API: Shutting down...")
         # Close services that have a close method
-        if "memory_service" in services:
-            await services["memory_service"].close()
-        if "user_profile_manager" in services:
-            await services["user_profile_manager"].close()
+        memory_service = services.get("memory_service")
+        if memory_service:
+            await memory_service.close()
+        user_profile_manager = services.get("user_profile_manager")
+        if user_profile_manager:
+            await user_profile_manager.close()
         # No explicit close for other services needed unless they manage external connections
         services.clear()
 
@@ -173,6 +177,9 @@ app = FastAPI(
     version="2.1.0",
     lifespan=lifespan,
 )
+
+# Include the new automation router
+app.include_router(automation.router, prefix="/api/automation", tags=["Automation"])
 
 # --- API Routers ---
 api_router = APIRouter(prefix="/api")
@@ -326,37 +333,6 @@ async def refactor_code_endpoint(request: RefactorCodeRequest):
     except Exception as e:
         await log_error(f"Error refactoring code for '{request.file_path}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error during refactoring: {e}")
-
-@api_router.post("/automation/changelog", response_model=ChangelogGenerationResponse, tags=["Automation"]) # NEW: Changelog endpoint
-async def generate_changelog_endpoint(request: ChangelogGenerationRequest):
-    changelog_generator = services.get("changelog_generator")
-    if not changelog_generator:
-        raise HTTPException(status_code=503, detail="Changelog Generator not available.")
-    try:
-        changelog_content = await changelog_generator.generate_changelog(
-            output_file=request.output_file,
-            user_profile=request.user_profile
-        )
-        return {"changelog_content": changelog_content}
-    except Exception as e:
-        await log_error(f"Error generating changelog to '{request.output_file}': {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error during changelog generation: {e}")
-
-@api_router.post("/automation/todo_stubs", response_model=TodoStubsGenerationResponse, tags=["Automation"]) # NEW: TODO Stubs endpoint
-async def generate_todo_stubs_endpoint(request: TodoStubsGenerationRequest):
-    stub_auto_generator = services.get("stub_auto_generator")
-    if not stub_auto_generator:
-        raise HTTPException(status_code=503, detail="TODO Stubs Generator not available.")
-    try:
-        stubs_content = await stub_auto_generator.generate_todo_stubs(
-            scan_path=request.scan_path,
-            output_file=request.output_file,
-            user_profile=request.user_profile
-        )
-        return {"stubs_content": stubs_content}
-    except Exception as e:
-        await log_error(f"Error generating TODO stubs for '{request.scan_path}': {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error during TODO stubs generation: {e}")
 
 @api_router.get("/profile", response_model=Dict[str, Any], tags=["Personalization"]) # NEW: Get profile endpoint
 async def get_user_profile_endpoint():

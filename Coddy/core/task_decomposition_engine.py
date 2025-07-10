@@ -14,7 +14,7 @@ class TaskDecompositionEngine:
     Decomposes high-level goals into smaller, executable subtasks,
     with the ability to tailor the decomposition based on a user's profile.
     """
-    def __init__(self):
+    def __init__(self, model_name: str):
         """
         Initializes the TaskDecompositionEngine, setting up the LLM.
         The LLM configuration can be dynamically influenced by user profile settings.
@@ -22,7 +22,7 @@ class TaskDecompositionEngine:
         # Initialize the LLM with a default model and API key.
         # Temperature can be overridden by user profile later.
         self.llm = ChatGoogleGenerativeAI(
-            model="gemini-pro", # Default model for decomposition
+            model=model_name, # Use the model name passed during initialization
             temperature=0.7,    # Default creativity/randomness
             google_api_key=os.getenv("GEMINI_API_KEY")
         )

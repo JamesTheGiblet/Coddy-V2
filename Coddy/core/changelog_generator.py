@@ -1,22 +1,26 @@
 import asyncio
 import os
+import json
 from typing import Any, Optional, List, Dict
-import re
 
-# FIX: Changed import path for execute_command
-from Coddy.core.execution_manager import execute_command
-# Removed: from utility_functions import execute_command, write_file # execute_command is moved, write_file is used directly or from utility_functions
-from Coddy.core.utility_functions import write_file # Ensure write_file is imported if used directly here
-from Coddy.core.logging_utility import log_info, log_warning, log_error, log_debug
-from Coddy.core.user_profile import UserProfile # NEW: Import UserProfile
+# Use absolute imports from the project root for consistency
+from core.utility_functions import write_file
+from core.logging_utility import log_info, log_warning, log_error, log_debug
+from core.user_profile import UserProfile
+from core.git_analyzer import GitAnalyzer
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 class ChangelogGenerator:
     """
     Generates a Markdown changelog from Git commit history.
     Supports commit categorization, tag ranges, and GitHub linking.
     """
-
-    def __init__(self, memory_service: Any, git_analyzer: Any, user_profile_manager: Optional[UserProfile] = None): # NEW: Accept user_profile_manager
+    def __init__(self, model_name: str, memory_service: Any, git_analyzer: GitAnalyzer, user_profile_manager: Optional[UserProfile] = None):
+        self.llm = ChatGoogleGenerativeAI(
+            model=model_name,
+            temperature=0.2,
+            convert_system_message_to_human=True
+        )
         self.memory_service = memory_service
         self.git_analyzer = git_analyzer
         self.user_profile_manager = user_profile_manager # Store the user profile manager
@@ -35,139 +39,47 @@ class ChangelogGenerator:
             # e.g., tone, verbosity, specific formatting preferences.
         return "\n".join(hints) if hints else ""
 
-    async def _get_git_tags(self) -> List[str]:
-        """
-        Returns a list of Git tags sorted by creation order.
-        """
-        try:
-            # Use the execute_command from ExecutionManager
-            retcode, stdout, stderr = await execute_command("git tag --sort=creatordate")
-            if retcode != 0:
-                await log_warning(f"Failed to retrieve tags: {stderr}")
-                return []
-            return stdout.strip().splitlines()
-        except Exception as e:
-            await log_error(f"Error fetching git tags: {e}", exc_info=True)
-            return []
-
-    async def _get_git_log(self, since_tag: Optional[str] = None, until_tag: Optional[str] = None, num_commits: Optional[int] = None) -> List[Dict[str, str]]:
-        log_format = "%H%n%an%n%ad%n%s%n%b%x00"
-        command_parts = ["git", "log", "--no-merges", f"--pretty=format:{log_format}"]
-
-        if since_tag and until_tag:
-            command_parts.append(f"{since_tag}..{until_tag}")
-        elif since_tag:
-            command_parts.append(since_tag)
-
-        if num_commits:
-            command_parts.append(f"-n {num_commits}")
-
-        try:
-            # Use the execute_command from ExecutionManager
-            return_code, stdout, stderr = await execute_command(" ".join(command_parts))
-
-            if return_code != 0:
-                await log_error(f"Git log command failed with exit code {return_code}: {stderr}")
-                return []
-
-            commits_raw = stdout.strip().split('\x00')
-            commits_data = []
-
-            for commit_raw in commits_raw:
-                if not commit_raw.strip():
-                    continue
-
-                parts = commit_raw.split('\n', 4)
-                if len(parts) >= 4:
-                    commit_hash = parts[0].strip()
-                    if not commit_hash:
-                        # Skip commits with missing hash
-                        continue
-                    author = parts[1].strip()
-                    date = parts[2].strip()
-                    subject = parts[3].strip()
-                    body = parts[4].strip() if len(parts) > 4 else ""
-
-                    commits_data.append({
-                        "hash": commit_hash,
-                        "author": author,
-                        "date": date,
-                        "subject": subject,
-                        "body": body
-                    })
-            return commits_data
-        except Exception as e:
-            await log_error(f"Error fetching Git log: {e}", exc_info=True)
-            return []
-
-    async def generate_changelog(self, *, since_tag: Optional[str] = None, until_tag: Optional[str] = None, num_commits: Optional[int] = None, repo_url: Optional[str] = None, user_profile: Optional[Dict[str, Any]] = None, output_file: str = "CHANGELOG.md") -> str: # NEW: Accept user_profile and output_file
+    async def generate_changelog(self, *, since_tag: Optional[str] = None, until_tag: Optional[str] = None, num_commits: Optional[int] = None, repo_url: Optional[str] = None, user_profile: Optional[Dict[str, Any]] = None, output_file: str = "CHANGELOG.md") -> str:
         await log_info("Generating changelog...")
-        commits = await self._get_git_log(since_tag=since_tag, until_tag=until_tag, num_commits=num_commits)
+        # Use the GitAnalyzer dependency to fetch logs
+        commits = await self.git_analyzer.get_commit_logs(
+            since_tag=since_tag, until_tag=until_tag, num_commits=num_commits
+        )
 
         if not commits:
             await log_warning("No commits found to generate changelog.")
             return "# Changelog\n\n_No changes found._"
 
-        # Personalization hints for the LLM (if we were using an LLM for formatting)
+        # Use the LLM to generate the changelog content
         personalization_hints = await self._get_personalization_hints(user_profile)
-        if personalization_hints:
-            await log_info(f"Applying personalization hints for changelog: {personalization_hints}")
-
-        categories = {
-            "feat": ("✨ Features", []),
-            "fix": ("🐛 Bug Fixes", []),
-            "docs": ("📝 Documentation", []),
-            "refactor": ("♻️ Refactoring", []),
-            "test": ("✅ Tests", []),
-            "chore": ("🧹 Chores", []),
-            "other": ("🔄 Other", [])
-        }
-
-        for commit in commits:
-            subject = commit['subject'].strip()
-            if not subject:
-                subject = commit['hash']  # fallback if subject empty
-
-            # Remove all leading/trailing asterisks, including multiple '**'
-            subject = re.sub(r'^\*+|\*+$', '', subject).strip()
-            # Collapse multiple spaces
-            subject = re.sub(r'\s+', ' ', subject)
-
-            body = commit['body']
-            match = re.match(r"^(feat|fix|docs|refactor|test|chore)(\(.+?\))?:\s+(.*)", subject, re.IGNORECASE)
-
-            key = "other"
-            message = subject
-
-            if match:
-                key = match.group(1).lower()
-                message = match.group(3)
-
-            full_hash = commit['hash']
-            short_hash = full_hash[:7]
-            commit_link = f"[`{short_hash}`]({repo_url}/commit/{full_hash})" if repo_url else f"`{short_hash}`"
-            author = commit['author']
-            date = commit['date'].split(' ')[0]  # ISO date or first token
-
-            linked_body = re.sub(r"#(\d+)", rf"[#\1]({repo_url}/issues/\1)" if repo_url else r"#\1", body)
-
-            entry = f"- **{message}:** ([`{short_hash}`]({repo_url}/commit/{full_hash}) by {author} on {date})"
-            if linked_body:
-                indented_body = "\n".join([f"  {line}" for line in linked_body.splitlines()])
-                entry += f"\n{indented_body}\n"
-
-            categories.setdefault(key, ("🔄 Other", []))[1].append(entry)
-
-        changelog_lines = ["# Changelog\n"]
-
-        for key, (title, items) in categories.items():
-            if items:
-                changelog_lines.append(f"## {title}\n")
-                changelog_lines.extend(items)
-                changelog_lines.append("")
-
-        changelog_content = "\n".join(changelog_lines)
         
+        prompt = f"""
+        You are an expert at writing software changelogs in Markdown format.
+        Based on the following git commits, generate a changelog.
+        
+        Instructions:
+        1. Categorize the changes into sections like 'Features', 'Bug Fixes', 'Refactoring', 'Documentation', 'Tests', and 'Chores'.
+        2. Use conventional commit prefixes (e.g., 'feat:', 'fix:', 'docs:') from the commit subjects to guide categorization.
+        3. For each entry, include the commit message (subject), a link to the commit, the author, and the date.
+        4. If the repository URL is provided, use it to create full commit and issue links.
+        5. If personalization hints are provided, consider them in the tone and style of the changelog.
+        
+        Repository URL for links: {repo_url or 'Not provided'}
+        Personalization Hints: {personalization_hints or 'None'}
+        
+        Raw Commit Data (JSON):
+        {json.dumps(commits, indent=2)}
+        
+        Generate only the Markdown content for the changelog.
+        """
+
+        try:
+            response = await self.llm.ainvoke(prompt)
+            changelog_content = response.content if hasattr(response, 'content') else str(response)
+        except Exception as e:
+            await log_error(f"LLM failed to generate changelog: {e}", exc_info=True)
+            return f"# Changelog Generation Failed\n\nAn error occurred: {e}"
+
         # Save to file
         await self.save_changelog_to_file(changelog_content=changelog_content, file_path=output_file)
 
@@ -193,4 +105,3 @@ if __name__ == "__main__":
     # To run this test, you'd need to mock or provide the dependencies.
     # asyncio.run(main_changelog_test())
     print("Run tests via the FastAPI application's lifespan or dedicated test suite.")
-

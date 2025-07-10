@@ -117,34 +117,44 @@ class GitAnalyzer:
             print(f"Error getting current Git branch: {e}")
             return None
 
-    async def get_commit_logs(self, limit: int = 5) -> List[Dict[str, str]]:
+    async def get_commit_logs(self, num_commits: Optional[int] = None, since_tag: Optional[str] = None, until_tag: Optional[str] = None) -> List[Dict[str, str]]:
         """
         Asynchronously retrieves recent commit logs.
 
         Args:
-            limit (int): The maximum number of commit logs to retrieve.
+            num_commits (Optional[int]): The maximum number of commit logs to retrieve.
+            since_tag (Optional[str]): The starting tag or commit for the log range.
+            until_tag (Optional[str]): The ending tag or commit for the log range.
 
         Returns:
             List[Dict[str, str]]: A list of dictionaries, each representing a commit
-                                   with 'hash', 'author', 'date', and 'message'.
+                                   with 'hash', 'author', 'date', 'subject', and 'body'.
         """
         try:
-            # Use --pretty=format to get structured output: hash, author name, author date, subject
-            log_format = "%H%n%an%n%ad%n%s%n---END-COMMIT---"
-            output = await self._run_git_command(["log", f"-n{limit}", f"--pretty=format:{log_format}"])
+            # Use null byte as a separator for robustness
+            log_format = "%H%n%an%n%ad%n%s%n%b%x00"
+            command = ["log", "--no-merges", f"--pretty=format:{log_format}"]
+            if since_tag and until_tag:
+                command.append(f"{since_tag}..{until_tag}")
+            elif since_tag:
+                command.append(since_tag)
+            if num_commits:
+                command.append(f"-n{num_commits}")
+
+            output = await self._run_git_command(command)
 
             commits = []
-            # Split by the custom delimiter, filter out empty strings
-            commit_raw_entries = [entry for entry in output.split('---END-COMMIT---') if entry.strip()]
+            commit_raw_entries = [entry for entry in output.strip().split('\x00') if entry.strip()]
 
             for commit_raw in commit_raw_entries:
-                parts = [p.strip() for p in commit_raw.split('\n') if p.strip()]
-                if len(parts) >= 4:
+                parts = commit_raw.strip().split('\n', 4)
+                if len(parts) >= 4 and parts[0]:
                     commits.append({
                         "hash": parts[0],
                         "author": parts[1],
                         "date": parts[2],
-                        "message": parts[3]
+                        "subject": parts[3],
+                        "body": parts[4].strip() if len(parts) > 4 else ""
                     })
             return commits
         except Exception as e:
