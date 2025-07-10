@@ -1,3 +1,5 @@
+# C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\plugins\watcher_plugin\__init__.py
+
 import asyncio
 import click
 from core.file_watcher import FileWatcher

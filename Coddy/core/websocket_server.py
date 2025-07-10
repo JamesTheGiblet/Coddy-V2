@@ -1,4 +1,5 @@
-# Coddy/core/websocket_server.py
+# C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\core\websocket_server.py
+
 import asyncio
 import websockets # Install with: pip install websockets
 import json

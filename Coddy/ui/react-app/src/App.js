@@ -1,12 +1,37 @@
 // Coddy/ui/react-app/src/App.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react'; // Added useEffect
 import TabButton from './TabButton';
 import RoadmapDisplay from './RoadmapDisplay';
 import GitHistoryDisplay from './GitHistoryDisplay';
 import IdeaSynthPlayground from './components/IdeaSynthPlayground';
+import RefactorCode from './RefactorCode'; // NEW: Import RefactorCode component
+import FileExplorer from './FileExplorer'; // NEW: Import FileExplorer component
+import AutomationTools from './AutomationTools'; // NEW: Import AutomationTools component
 
 function App() {
   const [activeTab, setActiveTab] = useState('roadmap'); // Default active tab
+  const [profileError, setProfileError] = useState(null); // State for profile loading error
+
+  // Function to fetch user profile on component mount
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      try {
+        const response = await fetch('http://127.0.0.1:8000/api/profile');
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.detail || 'Failed to load user profile.');
+        }
+        // const profileData = await response.json();
+        // console.log("User Profile Loaded:", profileData); // Log profile data if needed
+        setProfileError(null); // Clear any previous errors
+      } catch (error) {
+        console.error('Error loading user profile:', error);
+        setProfileError(`API Error loading user profile (${error.message}). Personalization may be limited.`);
+      }
+    };
+
+    fetchUserProfile();
+  }, []); // Empty dependency array means this runs once on mount
 
   // Function to render content based on the active tab
   const renderContent = () => {
@@ -17,6 +42,12 @@ function App() {
         return <GitHistoryDisplay />;
       case 'idea-synth':
         return <IdeaSynthPlayground />;
+      case 'refactor': // NEW: Refactor tab content
+        return <RefactorCode />;
+      case 'file-explorer': // NEW: File Explorer tab content
+        return <FileExplorer />;
+      case 'automation': // NEW: Automation tab content
+        return <AutomationTools />;
       default:
         return <RoadmapDisplay />;
     }
@@ -52,11 +83,39 @@ function App() {
             active={activeTab === 'idea-synth'}
             onClick={() => setActiveTab('idea-synth')}
           />
+          {/* NEW: Refactor Tab */}
+          <TabButton
+            icon={<i className="fas fa-magic text-2xl"></i>}
+            label="Refactor"
+            active={activeTab === 'refactor'}
+            onClick={() => setActiveTab('refactor')}
+          />
+          {/* NEW: File Explorer Tab */}
+          <TabButton
+            icon={<i className="fas fa-folder-open text-2xl"></i>}
+            label="Files"
+            active={activeTab === 'file-explorer'}
+            onClick={() => setActiveTab('file-explorer')}
+          />
+          {/* NEW: Automation Tab */}
+          <TabButton
+            icon={<i className="fas fa-robot text-2xl"></i>}
+            label="Automation"
+            active={activeTab === 'automation'}
+            onClick={() => setActiveTab('automation')}
+          />
         </nav>
       </header>
 
+      {/* Profile Error Display */}
+      {profileError && (
+        <div className="bg-red-800 text-white p-3 text-center font-medium">
+          {profileError}
+        </div>
+      )}
+
       {/* Main Content Area */}
-      <main className="flex-1 p-6 flex items-stretch"> {/* Use flex and items-stretch to make children fill height */}
+      <main className="flex-1 p-6 flex items-stretch">
         <div className="container mx-auto">
           {renderContent()}
         </div>
@@ -69,6 +128,5 @@ function App() {
     </div>
   );
 }
-
 
 export default App;

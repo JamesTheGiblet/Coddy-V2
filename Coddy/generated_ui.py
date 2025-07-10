@@ -1,3 +1,5 @@
+# C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\generated_ui.py
+
 import streamlit as st
 from models.user_profile_model import UserProfileModel
 

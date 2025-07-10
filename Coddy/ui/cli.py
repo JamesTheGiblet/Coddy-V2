@@ -1,4 +1,5 @@
-# Coddy/ui/cli.py
+# C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\ui\cli.py
+
 import asyncio
 import sys
 import os
@@ -29,6 +30,7 @@ try:
     from Coddy.core.execution_manager import ExecutionManager, execute_command 
     from Coddy.core.autonomous_agent import AutonomousAgent 
     from Coddy.core.user_profile import UserProfile # NEW: Import UserProfile
+    from Coddy.core.llm_provider import get_llm_provider # NEW: Import get_llm_provider
 except ImportError as e:
     print(f"FATAL ERROR: Could not import core modules required for CLI: {e}", file=sys.stderr)
     traceback.print_exc(file=sys.stderr)
@@ -43,6 +45,7 @@ code_generator: Optional[CodeGenerator] = None
 execution_manager: Optional[ExecutionManager] = None
 autonomous_agent: Optional[AutonomousAgent] = None
 user_profile_manager: Optional[UserProfile] = None # NEW: Global UserProfile instance
+llm_provider: Optional[Any] = None # NEW: Global LLMProvider instance
 
 current_user_id: str = "default_user"
 current_session_id: str = str(uuid.uuid4())
@@ -75,9 +78,13 @@ async def display_message(message: str, message_type: str = "info"):
 
 async def initialize_services():
     """Initializes global Coddy service instances."""
-    global memory_service, pattern_oracle, vibe_engine, git_analyzer, code_generator, execution_manager, autonomous_agent, user_profile_manager
+    global memory_service, pattern_oracle, vibe_engine, git_analyzer, code_generator, execution_manager, autonomous_agent, user_profile_manager, llm_provider
     await display_message("Initializing Coddy services...", "info")
     
+    # Define LLM model and provider type for CLI
+    LLM_MODEL_NAME = "gemini-1.5-flash-latest"
+    LLM_PROVIDER_TYPE = "gemini" # Or "ollama" if you prefer
+
     try:
         memory_service = MemoryService(session_id=current_session_id, user_id=current_user_id)
         
@@ -85,12 +92,24 @@ async def initialize_services():
         user_profile_manager = UserProfile(session_id=current_session_id, user_id=current_user_id)
         await user_profile_manager.initialize() # Load the user profile asynchronously
 
+        # NEW: Initialize LLMProvider
+        llm_provider = get_llm_provider(
+            provider_name=LLM_PROVIDER_TYPE,
+            config={"model": LLM_MODEL_NAME}
+        )
+        await display_message("LLMProvider initialized for CLI.", "info")
+
         # Pass user_profile_manager to VibeModeEngine
         vibe_engine = VibeModeEngine(memory_service, user_profile_manager=user_profile_manager)
         await vibe_engine.initialize() # Initialize VibeModeEngine to load its state
 
-        # Pass user_profile_manager to CodeGenerator (assuming CodeGenerator's __init__ is updated)
-        code_generator = CodeGenerator(user_profile_manager=user_profile_manager) 
+        # Pass user_profile_manager and llm_provider to CodeGenerator
+        code_generator = CodeGenerator(
+            llm_provider=llm_provider, # Pass the centralized LLMProvider
+            memory_service=memory_service, # Assuming CodeGenerator also needs memory_service
+            vibe_engine=vibe_engine, # Assuming CodeGenerator also needs vibe_engine
+            user_profile_manager=user_profile_manager
+        ) 
         
         pattern_oracle = PatternOracle(memory_service)
         
@@ -102,7 +121,7 @@ async def initialize_services():
             current_session_id=current_session_id
         )
 
-        # Pass user_profile_manager to AutonomousAgent (assuming AutonomousAgent's __init__ is updated)
+        # Pass user_profile_manager and llm_provider to AutonomousAgent
         autonomous_agent = AutonomousAgent(
             memory_service=memory_service,
             vibe_engine=vibe_engine,
@@ -110,7 +129,8 @@ async def initialize_services():
             execution_manager=execution_manager,
             current_user_id=current_user_id,
             current_session_id=current_session_id,
-            user_profile_manager=user_profile_manager 
+            user_profile_manager=user_profile_manager,
+            llm_provider=llm_provider # Pass the centralized LLMProvider
         )
 
         await display_message("Services initialized.", "info")
@@ -478,20 +498,20 @@ async def handle_instruction(instruction: str):
 
         elif command_name == "help":
             await display_message("\n--- Coddy Commands ---", "response")
-            await display_message("  agent <instruction>       - Execute a high-level instruction using the autonomous agent.", "response")
-            await display_message("  read <file>               - Read the content of a file.", "response")
-            await display_message("  write <file> <content>    - Write content to a file.", "response")
-            await display_message("  list [directory]          - List files in a directory.", "response")
-            await display_message("  exec <command>            - Execute a shell command.", "response")
-            await display_message("  checkpoint save|load <name> - Save or load a session checkpoint.", "response")
-            await display_message("  show context              - Display the loaded user context.", "response")
-            await display_message("  vibe [set <description>|clear] - Manage the current vibe/focus.", "response")
-            await display_message("  memory [search <query>]   - Interact with long-term memory.", "response")
-            await display_message("  profile [get <key>|set <key> <value>|clear] - Manage your user profile preferences.", "response") # NEW: Profile help
-            await display_message("  feedback <rating (1-5)> [comment] - Provide feedback on Coddy's last interaction.", "response") # NEW: Feedback help
-            await display_message("  unit_tester <file>        - Generate and optionally run unit tests for a file.", "response")
-            await display_message("  help                      - Show this help message.", "response")
-            await display_message("  exit, quit, bye           - Exit the CLI.", "response")
+            await display_message("    agent <instruction>       - Execute a high-level instruction using the autonomous agent.", "response")
+            await display_message("    read <file>               - Read the content of a file.", "response")
+            await display_message("    write <file> <content>    - Write content to a file.", "response")
+            await display_message("    list [directory]          - List files in a directory.", "response")
+            await display_message("    exec <command>            - Execute a shell command.", "response")
+            await display_message("    checkpoint save|load <name> - Save or load a session checkpoint.", "response")
+            await display_message("    show context              - Display the loaded user context.", "response")
+            await display_message("    vibe [set <description>|clear] - Manage the current vibe/focus.", "response")
+            await display_message("    memory [search <query>]   - Interact with long-term memory.", "response")
+            await display_message("    profile [get <key>|set <key> <value>|clear] - Manage your user profile preferences.", "response") # NEW: Profile help
+            await display_message("    feedback <rating (1-5)> [comment] - Provide feedback on Coddy's last interaction.", "response") # NEW: Feedback help
+            await display_message("    unit_tester <file>        - Generate and optionally run unit tests for a file.", "response")
+            await display_message("    help                      - Show this help message.", "response")
+            await display_message("    exit, quit, bye           - Exit the CLI.", "response")
             await display_message("---", "response")
             command_logged = True
 
@@ -520,14 +540,16 @@ async def handle_instruction(instruction: str):
                 await log_error(f"Memory logging failed for command: {original_instruction}", exc_info=True)
         elif command_logged and memory_service:
             if original_instruction != instruction:
-                    try:
-                        await memory_service.store_memory(
-                            content={"type": "top_level_command_outcome", "command": command_name, "full_instruction": original_instruction},
-                            tags=["cli_command", "top_level", command_name]
-                        )
-                    except Exception as e:
-                        await display_message(f"Failed to log original command to memory: {e}", "error")
-                        await log_error(f"Memory logging failed for original command: {original_instruction}", exc_info=True)
+                # This block seems to be intended for logging the outcome of a top-level command
+                # if it was transformed or delegated. Ensure it's correctly logging the *original* instruction.
+                try:
+                    await memory_service.store_memory(
+                        content={"type": "top_level_command_outcome", "command": command_name, "full_instruction": original_instruction},
+                        tags=["cli_command", "top_level", command_name]
+                    )
+                except Exception as e:
+                    await display_message(f"Failed to log original command to memory: {e}", "error")
+                    await log_error(f"Memory logging failed for original command: {original_instruction}", exc_info=True)
 
 
 async def start_cli():
@@ -560,3 +582,4 @@ async def start_cli():
             await memory_service.close()
         if user_profile_manager:
             await user_profile_manager.close()
+

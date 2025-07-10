@@ -1,4 +1,4 @@
-# cleanup_script.py
+# C:\Users\gilbe\Documents\GitHub\Coddy_V2\cleanup_script.py 
 
 import os
 import shutil

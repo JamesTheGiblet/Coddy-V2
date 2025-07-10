@@ -19,11 +19,13 @@ try:
     from core.vibe_mode import VibeModeEngine
     from core.logging_utility import log_info, log_warning, log_error, log_debug
     from core.user_profile import UserProfile
+    from core.llm_provider import LLMProvider # NEW: Import LLMProvider for type hinting
     
 except ImportError as e:
     print(f"FATAL ERROR: Could not import core modules required for CodeGenerator: {e}", file=sys.stderr)
     # Set UserProfile to None if import fails to prevent NameError, though it's critical for this feature.
     UserProfile = None
+    LLMProvider = Any # Fallback if import fails
     sys.exit(1)
 
 class CodeGenerator:
@@ -31,15 +33,17 @@ class CodeGenerator:
     Generates code based on instructions, leveraging IdeaSynthesizer (LLM)
     and incorporating UserProfile for personalized generation and interaction logging.
     """
-    def __init__(self, model_name: str,
+    # MODIFIED: Accept llm_provider instance directly and remove model_name
+    def __init__(self, llm_provider: Any,
                  memory_service: Optional[MemoryService] = None,
                  vibe_engine: Optional[VibeModeEngine] = None,
                  user_profile_manager: Optional[Any] = None):
         self.user_profile_manager = user_profile_manager # Store the user profile manager
-        # Pass user_profile_manager to IdeaSynthesizer
-        # Pass model_name to IdeaSynthesizer to ensure consistency
+        self.llm_provider = llm_provider # Store the LLMProvider instance
+        
+        # MODIFIED: Pass llm_provider to IdeaSynthesizer
         self.idea_synthesizer = IdeaSynthesizer(
-            model_name=model_name,
+            llm_provider=self.llm_provider, # Pass the centralized LLMProvider
             user_profile_manager=self.user_profile_manager
         )
         self.memory_service = memory_service
@@ -135,7 +139,8 @@ class CodeGenerator:
                     "output_summary": corrected_code[:200] + "..." if len(corrected_code) > 200 else corrected_code,
                     "timestamp": datetime.utcnow().isoformat(),
                     "context_id": interaction_context_id,
-                    "model_used": user_profile.get('llm_provider_config', {}).get('model_name', 'gemini-pro') if user_profile else 'gemini-pro'
+                    "model_used": self.llm_provider.model_name if hasattr(self.llm_provider, 'model_name') else 'unknown_model' # Use the model name from the injected provider
                 }
                 await self.user_profile_manager.update_last_interaction_summary(summary)
             return corrected_code
+

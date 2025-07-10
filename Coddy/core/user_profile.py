@@ -1,4 +1,5 @@
-# Coddy/core/user_profile.py
+# C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\core\user_profile.py
+
 import json
 from pathlib import Path
 from typing import Optional, Any, Dict, List

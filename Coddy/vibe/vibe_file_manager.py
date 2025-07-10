@@ -1,4 +1,5 @@
-# Coddy/vibe/vibe_file_manager.py
+# C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\vibe\vibe_file_manager.py
+
 import asyncio
 import os
 import json

@@ -1,3 +1,6 @@
+# Coddy/core/changelog_generator.py
+
+from __future__ import annotations # Enable postponed evaluation of type annotations
 import asyncio
 import os
 import json
@@ -8,19 +11,17 @@ from core.utility_functions import write_file
 from core.logging_utility import log_info, log_warning, log_error, log_debug
 from core.user_profile import UserProfile
 from core.git_analyzer import GitAnalyzer
-from langchain_google_genai import ChatGoogleGenerativeAI
+# REMOVED: from langchain_google_genai import ChatGoogleGenerativeAI # No longer instantiate here
+from core.llm_provider import LLMProvider # NEW: Import LLMProvider base class for type hinting
 
 class ChangelogGenerator:
     """
     Generates a Markdown changelog from Git commit history.
     Supports commit categorization, tag ranges, and GitHub linking.
     """
-    def __init__(self, model_name: str, memory_service: Any, git_analyzer: GitAnalyzer, user_profile_manager: Optional[UserProfile] = None):
-        self.llm = ChatGoogleGenerativeAI(
-            model=model_name,
-            temperature=0.2,
-            convert_system_message_to_human=True
-        )
+    # MODIFIED: Accept llm_provider instance directly instead of model_name
+    def __init__(self, llm_provider: LLMProvider, memory_service: Any, git_analyzer: GitAnalyzer, user_profile_manager: Optional[UserProfile] = None):
+        self.llm_provider = llm_provider # Store the LLMProvider instance
         self.memory_service = memory_service
         self.git_analyzer = git_analyzer
         self.user_profile_manager = user_profile_manager # Store the user profile manager
@@ -74,8 +75,11 @@ class ChangelogGenerator:
         """
 
         try:
-            response = await self.llm.ainvoke(prompt)
-            changelog_content = response.content if hasattr(response, 'content') else str(response)
+            # MODIFIED: Use the injected llm_provider to generate text
+            changelog_content = await self.llm_provider.generate_text(
+                prompt=prompt,
+                temperature=0.2 # Keep a low temperature for factual generation
+            )
         except Exception as e:
             await log_error(f"LLM failed to generate changelog: {e}", exc_info=True)
             return f"# Changelog Generation Failed\n\nAn error occurred: {e}"

@@ -1,3 +1,5 @@
+# C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\Dockerfile
+
 # Use an official Python runtime as a parent image
 FROM python:3.11-slim
 

@@ -1,3 +1,5 @@
+# C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\plugins\test_thyself_plugin\cli.py
+ 
 import asyncio
 import click
 import logging

@@ -1,10 +1,13 @@
 # c:\Users\gilbe\Documents\GitHub\Coddy V2\Coddy/core/task_decomposition_engine.py
 import json
 import asyncio # Import asyncio for async operations
-from langchain_google_genai import ChatGoogleGenerativeAI
+# REMOVED: from langchain_google_genai import ChatGoogleGenerativeAI # No longer instantiate here
 from dotenv import load_dotenv
 import os
 from typing import List, Dict, Any, Optional # Added for type hints
+
+# NEW: Import LLMProvider for type hinting
+from core.llm_provider import LLMProvider
 
 # Load environment variables from .env file
 load_dotenv() 
@@ -14,21 +17,14 @@ class TaskDecompositionEngine:
     Decomposes high-level goals into smaller, executable subtasks,
     with the ability to tailor the decomposition based on a user's profile.
     """
-    def __init__(self, model_name: str):
+    # MODIFIED: Accept llm_provider instance directly
+    def __init__(self, llm_provider: LLMProvider):
         """
-        Initializes the TaskDecompositionEngine, setting up the LLM.
+        Initializes the TaskDecompositionEngine with an LLM provider.
         The LLM configuration can be dynamically influenced by user profile settings.
         """
-        # Initialize the LLM with a default model and API key.
-        # Temperature can be overridden by user profile later.
-        self.llm = ChatGoogleGenerativeAI(
-            model=model_name, # Use the model name passed during initialization
-            temperature=0.7,    # Default creativity/randomness
-            google_api_key=os.getenv("GEMINI_API_KEY")
-        )
-        if not os.getenv("GEMINI_API_KEY"):
-            print("Warning: GEMINI_API_KEY not found in environment variables. LLM calls for decomposition may fail.")
-
+        self.llm_provider = llm_provider # Store the LLMProvider instance
+        # Removed internal ChatGoogleGenerativeAI instantiation
 
     async def decompose(self, goal: str, user_profile: Optional[Dict[str, Any]] = None) -> list[str]:
         """
@@ -80,11 +76,11 @@ class TaskDecompositionEngine:
             """
 
             try:
-                # Make the asynchronous call to the LLM for decomposition
-                response = await self.llm.ainvoke(prompt_template)
-                
-                # Extract the content from the LLM response object
-                response_content = response.content if hasattr(response, 'content') else str(response)
+                # MODIFIED: Use the injected llm_provider to generate text
+                response_content = await self.llm_provider.generate_text(
+                    prompt=prompt_template,
+                    temperature=float(creativity) # Pass creativity as temperature
+                )
                 
                 # Attempt to parse the LLM's response as a JSON list of strings
                 tasks = json.loads(response_content)

@@ -1,4 +1,5 @@
-# core/ui_generator.py
+# C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\core\ui_generator.py
+
 import ast
 from pathlib import Path
 import sys

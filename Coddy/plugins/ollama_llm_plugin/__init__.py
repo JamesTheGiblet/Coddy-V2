@@ -1,4 +1,4 @@
-# plugins/ollama_llm_plugin/__init__.py
+# C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\plugins\ollama_llm_plugin\__init__.py
 import click
 import requests
 import json

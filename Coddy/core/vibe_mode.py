@@ -1,4 +1,5 @@
-# Coddy/core/vibe_mode.py
+# C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\core\vibe_mode.py
+
 import asyncio
 import sys
 import os

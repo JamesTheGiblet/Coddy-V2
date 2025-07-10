@@ -1,4 +1,4 @@
-# core/utils.py
+# C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\core\utils.py
 import os
 
 def write_file(file_path: str, content: str):

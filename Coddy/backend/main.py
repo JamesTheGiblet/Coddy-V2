@@ -10,8 +10,6 @@ from dotenv import load_dotenv
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
 
 # --- Path Setup ---
-# Add the project root to the Python path to allow for absolute imports.
-# This makes the backend runnable from any directory.
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
@@ -20,7 +18,6 @@ from fastapi import FastAPI, APIRouter, HTTPException, Body
 from pydantic import BaseModel, Field
 
 try:
-    # Use absolute imports from the project root for consistency
     from core.memory_service import MemoryService
     from core.utility_functions import read_file, write_file, list_files
     from core.logging_utility import log_info, log_warning, log_error, log_debug
@@ -31,6 +28,8 @@ try:
     from core.user_profile import UserProfile
     from core.changelog_generator import ChangelogGenerator
     from core.stub_auto_generator import StubAutoGenerator
+    from core.llm_provider import get_llm_provider
+
 except ImportError as e:
     print(f"FATAL ERROR: Could not import core modules required for FastAPI backend: {e}", file=sys.stderr)
     sys.exit(1)
@@ -62,26 +61,26 @@ class MemoryQuery(BaseModel):
 
 class DecomposeRequest(BaseModel):
     instruction: str
-    user_profile: Optional[Dict[str, Any]] = Field(None, description="User's personalization profile.") # NEW
+    user_profile: Optional[Dict[str, Any]] = Field(None, description="User's personalization profile.")
 
 class CodeGenerationRequest(BaseModel):
     prompt: str
-    context: Optional[Dict[str, Any]] = Field(None, description="Optional context to provide to the code generator.") # Changed to Dict
-    user_profile: Optional[Dict[str, Any]] = Field(None, description="User's personalization profile.") # NEW
+    context: Optional[Dict[str, Any]] = Field(None, description="Optional context to provide to the code generator.")
+    user_profile: Optional[Dict[str, Any]] = Field(None, description="User's personalization profile.")
 
-class RefactorCodeRequest(BaseModel): # NEW: Model for refactoring requests
+class RefactorCodeRequest(BaseModel):
     file_path: str
     original_code: str
     instructions: str
     user_profile: Optional[Dict[str, Any]] = Field(None, description="User's personalization profile.")
 
-class RefactorCodeResponse(BaseModel): # NEW: Model for refactoring responses
+class RefactorCodeResponse(BaseModel):
     refactored_code: str
 
-class UserProfileData(BaseModel): # NEW: Model for setting user profile
+class UserProfileData(BaseModel):
     profile_data: Dict[str, Any]
 
-class FeedbackRequest(BaseModel): # NEW: Model for feedback submission
+class FeedbackRequest(BaseModel):
     rating: int
     comment: Optional[str] = None
     context_id: Optional[str] = None
@@ -95,52 +94,55 @@ class GitStatusResponse(BaseModel):
     untracked_files: List[str]
     log: List[Dict[str, Any]]
 
+
 # --- Lifespan Management (Modern Approach) ---
-DEFAULT_USER_ID = "api_user" # This will eventually come from authentication
-DEFAULT_SESSION_ID = "api_session_default" # This will eventually come from session management
+DEFAULT_USER_ID = "api_user"
+DEFAULT_SESSION_ID = "api_session_default"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initializes core services when the FastAPI application starts."""
-    # Centralized model configuration to fix API version compatibility.
-    # 'gemini-pro' is not consistently found on the v1beta API. 'gemini-1.5-flash-latest' is a powerful and compatible alternative.
     LLM_MODEL_NAME = "gemini-1.5-flash-latest"
+    LLM_PROVIDER_TYPE = "gemini"
+
     await log_info("Coddy Backend API: Initializing core services...")
     try:
-        # Initialize MemoryService first as it's a dependency
+        services = {}
         services["memory_service"] = MemoryService(session_id=DEFAULT_SESSION_ID, user_id=DEFAULT_USER_ID, is_backend_core=True)
         
-        # NEW: Initialize UserProfile
         services["user_profile_manager"] = UserProfile(
             session_id=DEFAULT_SESSION_ID, 
             user_id=DEFAULT_USER_ID,
             memory_service=services["memory_service"]
         )
-        await services["user_profile_manager"].initialize() # Load profile data
+        await services["user_profile_manager"].initialize()
 
-        # Initialize VibeModeEngine with MemoryService and UserProfileManager
+        services["llm_provider"] = get_llm_provider(
+            provider_name=LLM_PROVIDER_TYPE,
+            config={"model": LLM_MODEL_NAME}
+        )
+        await log_info("LLMProvider initialized.")
+
+
         services["vibe_engine"] = VibeModeEngine(services["memory_service"], user_id=DEFAULT_USER_ID)
-        await services["vibe_engine"].initialize() # Initialize VibeModeEngine to load its state
+        await services["vibe_engine"].initialize()
 
-        # Initialize CodeGenerator with dependencies including user_profile_manager
-        # CodeGenerator's __init__ takes memory_service, vibe_engine, and user_profile_manager
+        # MODIFIED: Pass llm_provider directly, removed model_name
         services["code_generator"] = CodeGenerator(
-            model_name=LLM_MODEL_NAME,
+            llm_provider=services["llm_provider"], # Pass the centralized LLMProvider
             memory_service=services["memory_service"],
             vibe_engine=services["vibe_engine"],
             user_profile_manager=services["user_profile_manager"]
         )
         await services["code_generator"].initialize()
 
-        # Initialize TaskDecompositionEngine (it now takes user_profile in decompose method)
+        # MODIFIED: Pass llm_provider directly, removed model_name
         services["task_decomposition_engine"] = TaskDecompositionEngine(
-            model_name=LLM_MODEL_NAME
+            llm_provider=services["llm_provider"] # Pass the centralized LLMProvider
         )
         
-        # Initialize GitAnalyzer
         services["git_analyzer"] = GitAnalyzer()
 
-        # NEW: Initialize Automation tools
         services["changelog_generator"] = ChangelogGenerator(
             llm_provider=services["llm_provider"],
             memory_service=services["memory_service"],
@@ -160,14 +162,12 @@ async def lifespan(app: FastAPI):
         raise
     finally:
         await log_info("Coddy Backend API: Shutting down...")
-        # Close services that have a close method
         memory_service = services.get("memory_service")
         if memory_service:
             await memory_service.close()
         user_profile_manager = services.get("user_profile_manager")
         if user_profile_manager:
             await user_profile_manager.close()
-        # No explicit close for other services needed unless they manage external connections
         services.clear()
 
 # --- App Initialization ---
@@ -307,14 +307,14 @@ async def generate_code_endpoint(request: CodeGenerationRequest):
         generated_code = await generator.generate_code(
             prompt=request.prompt,
             context=request.context,
-            user_profile=request.user_profile # NEW: Pass user_profile
+            user_profile=request.user_profile
         )
         return {"code": generated_code}
     except Exception as e:
         await log_error(f"Error generating code: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error during code generation: {e}")
 
-@api_router.post("/code/refactor", response_model=RefactorCodeResponse, tags=["Agent Operations"]) # NEW: Refactor endpoint
+@api_router.post("/code/refactor", response_model=RefactorCodeResponse, tags=["Agent Operations"])
 async def refactor_code_endpoint(request: RefactorCodeRequest):
     generator = services.get("code_generator")
     if not generator:
@@ -325,7 +325,7 @@ async def refactor_code_endpoint(request: RefactorCodeRequest):
             file_path=request.file_path,
             context={
                 "original_code": request.original_code,
-                "problem_description": request.instructions # Use instructions as problem description
+                "problem_description": request.instructions
             },
             user_profile=request.user_profile
         )
@@ -334,7 +334,7 @@ async def refactor_code_endpoint(request: RefactorCodeRequest):
         await log_error(f"Error refactoring code for '{request.file_path}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error during refactoring: {e}")
 
-@api_router.get("/profile", response_model=Dict[str, Any], tags=["Personalization"]) # NEW: Get profile endpoint
+@api_router.get("/profile", response_model=Dict[str, Any], tags=["Personalization"])
 async def get_user_profile_endpoint():
     user_profile_manager = services.get("user_profile_manager")
     if not user_profile_manager or not user_profile_manager.profile:
@@ -346,7 +346,7 @@ async def get_user_profile_endpoint():
         await log_error(f"Error getting user profile: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
 
-@api_router.post("/profile/set", response_model=MessageResponse, tags=["Personalization"]) # NEW: Set profile endpoint
+@api_router.post("/profile/set", response_model=MessageResponse, tags=["Personalization"])
 async def set_user_profile_endpoint(request: UserProfileData):
     user_profile_manager = services.get("user_profile_manager")
     if not user_profile_manager:
@@ -362,7 +362,7 @@ async def set_user_profile_endpoint(request: UserProfileData):
         await log_error(f"Error setting user profile: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
 
-@api_router.post("/profile/clear", response_model=MessageResponse, tags=["Personalization"]) # NEW: Clear profile endpoint
+@api_router.post("/profile/clear", response_model=MessageResponse, tags=["Personalization"])
 async def clear_user_profile_endpoint():
     user_profile_manager = services.get("user_profile_manager")
     if not user_profile_manager:
@@ -374,7 +374,7 @@ async def clear_user_profile_endpoint():
         await log_error(f"Error clearing user profile: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
 
-@api_router.post("/feedback/add", response_model=MessageResponse, tags=["Personalization"]) # NEW: Add feedback endpoint
+@api_router.post("/feedback/add", response_model=MessageResponse, tags=["Personalization"])
 async def add_feedback_endpoint(request: FeedbackRequest):
     user_profile_manager = services.get("user_profile_manager")
     if not user_profile_manager:

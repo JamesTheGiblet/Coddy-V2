@@ -1,4 +1,5 @@
-# Coddy/models/user_profile_model.py
+# C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\models\user_profile_model.py
+
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 

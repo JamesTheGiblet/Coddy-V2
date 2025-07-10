@@ -1,3 +1,5 @@
+# C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\docs\coddy_setup.py
+
 import os
 import shutil
 import json
