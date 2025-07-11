@@ -2,6 +2,7 @@
 
 import json
 import asyncio # Import asyncio for async operations
+import re # Import regex for robust JSON parsing
 # REMOVED: from langchain_google_genai import ChatGoogleGenerativeAI # No longer instantiate here
 from dotenv import load_dotenv
 import os
@@ -82,18 +83,31 @@ class TaskDecompositionEngine:
                     prompt=prompt_template,
                     temperature=float(creativity) # Pass creativity as temperature
                 )
-                
-                # Attempt to parse the LLM's response as a JSON list of strings
-                tasks = json.loads(response_content)
+
+                # The LLM might return the JSON list wrapped in markdown or with extra text.
+                # We need to robustly extract the JSON part before parsing.
+                json_str = response_content
+
+                # First, try to find a JSON code block
+                json_match = re.search(r"```json\s*([\s\S]*?)\s*```", response_content, re.IGNORECASE)
+                if json_match:
+                    json_str = json_match.group(1)
+                else:
+                    # If no code block, find the content between the first '[' and last ']'
+                    start_index = response_content.find('[')
+                    end_index = response_content.rfind(']')
+                    if start_index != -1 and end_index != -1 and end_index > start_index:
+                        json_str = response_content[start_index : end_index + 1]
+
+                tasks = json.loads(json_str)
                 if isinstance(tasks, list) and all(isinstance(task, str) for task in tasks):
                     return tasks
                 else:
-                    # Log a warning if the LLM returns an invalid format but attempt to return it as a single string
-                    print(f"Warning: LLM returned invalid task list format. Raw response: {response_content}")
+                    print(f"Warning: LLM returned a valid JSON object, but it was not a list of strings. Raw response: {response_content}")
                     return [f"Error: LLM returned invalid task list format. Raw: {response_content}"]
             except json.JSONDecodeError as e:
                 # Handle JSON decoding errors from the LLM response
-                print(f"Error decoding JSON from LLM response: {e}. Raw response: {response_content}")
+                print(f"Error decoding JSON from LLM response: {e}. Raw response was: {response_content}")
                 return [f"Error: LLM did not return valid JSON. {e}"]
             except Exception as e:
                 # Catch any other exceptions during the LLM call

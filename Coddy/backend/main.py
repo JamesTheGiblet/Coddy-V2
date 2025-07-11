@@ -1,5 +1,4 @@
-# C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\backend\main.py
-
+# Coddy/backend/main.py
 import asyncio
 import os
 import sys
@@ -7,29 +6,26 @@ from typing import List, Dict, Any, Optional
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
+from ..core.logging_utility import log_debug, log_error, log_info
+
 # Load environment variables from the .env file located one level up from backend
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
-
-# --- Path Setup ---
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
 
 from fastapi import FastAPI, APIRouter, HTTPException, Body
 from pydantic import BaseModel, Field
 
 try:
-    from core.memory_service import MemoryService
-    from core.utility_functions import read_file, write_file, list_files
-    from core.logging_utility import log_info, log_warning, log_error, log_debug
-    from core.vibe_mode import VibeModeEngine
-    from core.code_generator import CodeGenerator
-    from core.task_decomposition_engine import TaskDecompositionEngine
-    from core.git_analyzer import GitAnalyzer
-    from core.user_profile import UserProfile
-    from core.changelog_generator import ChangelogGenerator
-    from core.stub_auto_generator import StubAutoGenerator
-    from core.llm_provider import get_llm_provider
+    from ..core.memory_service import MemoryService
+    from ..core.utility_functions import read_file, write_file, list_files
+    from ..core.execution_manager import ExecutionManager
+    from ..core.vibe_mode import VibeModeEngine
+    from ..core.code_generator import CodeGenerator
+    from ..core.task_decomposition_engine import TaskDecompositionEngine
+    from ..core.git_analyzer import GitAnalyzer
+    from ..core.user_profile import UserProfile
+    from ..core.changelog_generator import ChangelogGenerator
+    from ..core.stub_auto_generator import StubAutoGenerator
+    from ..core.llm_provider import get_llm_provider
 
 except ImportError as e:
     print(f"FATAL ERROR: Could not import core modules required for FastAPI backend: {e}", file=sys.stderr)
@@ -37,7 +33,9 @@ except ImportError as e:
 
 # Import Routers
 from backend.api.routers import automation
-from backend.services import services
+
+# NEW: Declare services dictionary globally here
+services: Dict[str, Any] = {} 
 
 # --- Pydantic Models ---
 class FilePath(BaseModel):
@@ -75,6 +73,14 @@ class RefactorCodeRequest(BaseModel):
     instructions: str
     user_profile: Optional[Dict[str, Any]] = Field(None, description="User's personalization profile.")
 
+class ShellCommandRequest(BaseModel):
+    command: str
+
+class ShellCommandResponse(BaseModel):
+    return_code: int
+    stdout: str
+    stderr: str
+
 class RefactorCodeResponse(BaseModel):
     refactored_code: str
 
@@ -108,7 +114,8 @@ async def lifespan(app: FastAPI):
 
     await log_info("Coddy Backend API: Initializing core services...")
     try:
-        services = {}
+        # services dictionary is now populated directly as it's a global variable
+        # REMOVED: global services # No longer needed as services is now globally declared
         services["memory_service"] = MemoryService(session_id=DEFAULT_SESSION_ID, user_id=DEFAULT_USER_ID, is_backend_core=True)
         
         services["user_profile_manager"] = UserProfile(
@@ -128,7 +135,6 @@ async def lifespan(app: FastAPI):
         services["vibe_engine"] = VibeModeEngine(services["memory_service"], user_id=DEFAULT_USER_ID)
         await services["vibe_engine"].initialize()
 
-        # MODIFIED: Pass llm_provider directly, removed model_name
         services["code_generator"] = CodeGenerator(
             llm_provider=services["llm_provider"], # Pass the centralized LLMProvider
             memory_service=services["memory_service"],
@@ -137,15 +143,22 @@ async def lifespan(app: FastAPI):
         )
         await services["code_generator"].initialize()
 
-        # MODIFIED: Pass llm_provider directly, removed model_name
         services["task_decomposition_engine"] = TaskDecompositionEngine(
             llm_provider=services["llm_provider"] # Pass the centralized LLMProvider
         )
         
+        services["execution_manager"] = ExecutionManager(
+            memory_service=services["memory_service"],
+            vibe_engine=services["vibe_engine"],
+            code_generator=services["code_generator"],
+            current_user_id=DEFAULT_USER_ID,
+            current_session_id=DEFAULT_SESSION_ID
+        )
+
         services["git_analyzer"] = GitAnalyzer()
 
         services["changelog_generator"] = ChangelogGenerator(
-            llm_provider=services["llm_provider"],
+            llm_provider=services["llm_provider"], # Pass the centralized LLMProvider
             memory_service=services["memory_service"],
             git_analyzer=services["git_analyzer"],
             user_profile_manager=services["user_profile_manager"]
@@ -157,7 +170,7 @@ async def lifespan(app: FastAPI):
         )
 
         await log_info("Coddy Backend API: Core services initialized successfully.")
-        yield
+        yield # Yield control back to FastAPI after initialization
     except Exception as e:
         await log_error(f"Coddy Backend API: Failed to initialize core services: {e}", exc_info=True)
         raise
@@ -169,7 +182,8 @@ async def lifespan(app: FastAPI):
         user_profile_manager = services.get("user_profile_manager")
         if user_profile_manager:
             await user_profile_manager.close()
-        services.clear()
+        services.clear() # Clear the global dict on shutdown
+
 
 # --- App Initialization ---
 app = FastAPI(
@@ -286,14 +300,23 @@ async def load_memory_endpoint(query_data: MemoryQuery):
 @api_router.post("/tasks/decompose", response_model=List[str], tags=["Agent Operations"])
 async def decompose_task_endpoint(request: DecomposeRequest):
     engine = services.get("task_decomposition_engine")
+    
+    # Debug log to check if engine is available
+    await log_debug(f"Attempting to decompose task. TaskDecompositionEngine exists: {engine is not None}")
+
     if not engine:
         raise HTTPException(status_code=503, detail="Task Decomposition Engine not available.")
     try:
         # Pass user_profile to the decompose method
         subtasks = await engine.decompose(request.instruction, user_profile=request.user_profile)
         if not subtasks or (len(subtasks) == 1 and "Error:" in subtasks[0]):
-            raise HTTPException(status_code=400, detail=f"Could not decompose task: {subtasks[0] if subtasks else 'Unknown issue'}")
+            error_detail = subtasks[0] if subtasks else "Unknown decomposition issue"
+            # If the error is from the LLM call itself, it's a server-side issue (503), otherwise it's a bad request (400)
+            status_code = 503 if "LLM call" in error_detail else 400
+            raise HTTPException(status_code=status_code, detail=f"Could not decompose task: {error_detail}")
         return subtasks
+    except HTTPException:
+        raise   # Re-raise HTTPException so FastAPI can handle it correctly
     except Exception as e:
         await log_error(f"Error during task decomposition: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error during decomposition: {e}")
@@ -335,9 +358,27 @@ async def refactor_code_endpoint(request: RefactorCodeRequest):
         await log_error(f"Error refactoring code for '{request.file_path}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error during refactoring: {e}")
 
+@api_router.post("/shell/exec", response_model=ShellCommandResponse, tags=["Execution"])
+async def execute_shell_command_endpoint(request: ShellCommandRequest):
+    execution_manager = services.get("execution_manager")
+    if not execution_manager:
+        raise HTTPException(status_code=503, detail="Execution Manager not available.")
+    try:
+        # The execution_manager.execute_shell_command already logs and sends to websocket.
+        # It returns a tuple, so we need to pack it into the response model.
+        return_code, stdout, stderr = await execution_manager.execute_shell_command(request.command)
+        return ShellCommandResponse(return_code=return_code, stdout=stdout, stderr=stderr)
+    except Exception as e:
+        await log_error(f"Error executing shell command '{request.command}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
+
 @api_router.get("/profile", response_model=Dict[str, Any], tags=["Personalization"])
 async def get_user_profile_endpoint():
     user_profile_manager = services.get("user_profile_manager")
+    
+    # Debug log to check if user_profile_manager and its profile are available
+    await log_debug(f"Attempting to get user profile. user_profile_manager exists: {user_profile_manager is not None}, profile exists: {user_profile_manager.profile is not None if user_profile_manager else 'N/A'}")
+
     if not user_profile_manager or not user_profile_manager.profile:
         raise HTTPException(status_code=503, detail="User Profile service not available or not loaded.")
     try:
@@ -394,7 +435,13 @@ async def add_feedback_endpoint(request: FeedbackRequest):
 
 app.include_router(api_router)
 
+# IMPORTANT: Make services a global variable *outside* lifespan
+# This ensures it's accessible by the route handlers after lifespan completes.
+# It's initialized within lifespan, but its reference needs to be global.
+# services: Dict[str, Any] = {} # This line is now moved to the top
+
 if __name__ == "__main__":
     import uvicorn
     print("Starting Coddy Backend API server...")
     uvicorn.run(app, host="0.0.0.0", port=8000)
+    print("Coddy Backend API server started.")

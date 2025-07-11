@@ -16,6 +16,7 @@ from core.code_generator import CodeGenerator # For direct code generation if ne
 # Assuming these are available from the core module or passed in
 from core.websocket_server import send_to_websocket_server
 from core.logging_utility import log_info, log_warning, log_error, log_debug
+from core.user_profile import UserProfile  # Import UserProfile to fix the error
 
 class AutonomousAgent:
     """
@@ -35,7 +36,7 @@ class AutonomousAgent:
         self.vibe_engine = vibe_engine
         self.code_generator = code_generator
         self.execution_manager = execution_manager
-        self.task_decomposition_engine = TaskDecompositionEngine() # Agent owns its decomposition engine
+        self.task_decomposition_engine = TaskDecompositionEngine(llm_provider=self.code_generator.llm_provider) # Agent owns its decomposition engine
         self.current_user_id = current_user_id
         self.current_session_id = current_session_id
 
@@ -80,9 +81,16 @@ class AutonomousAgent:
             tags=["agent_task", "new_task"]
         )
 
+        # Load user profile to pass to the decomposition engine
+        user_profile_manager = UserProfile(session_id=self.current_session_id, user_id=self.current_user_id, memory_service=self.memory_service)
+        await user_profile_manager.initialize()
+        user_profile_data = user_profile_manager.profile.model_dump() if user_profile_manager.profile else {}
+        # We don't close the user_profile_manager here, as the memory_service is shared.
+        # The creator of the agent is responsible for the lifecycle of the memory_service.
+
         # 2. Decompose the high-level instruction into subtasks
         await self._display_message("Decomposing high-level instruction...", "info")
-        subtasks = await self.task_decomposition_engine.decompose(high_level_instruction)
+        subtasks = await self.task_decomposition_engine.decompose(high_level_instruction, user_profile=user_profile_data)
 
         if not subtasks or (len(subtasks) == 1 and "Error:" in subtasks[0]):
             await self._display_message(f"Failed to decompose instruction: {subtasks[0] if subtasks else 'No subtasks generated'}", "error")
@@ -192,4 +200,3 @@ class AutonomousAgent:
             )
         
         return task_successful
-

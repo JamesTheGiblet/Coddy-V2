@@ -50,7 +50,8 @@ async def decompose_task(instruction: str, user_profile: Optional[Dict[str, Any]
         
         response = await client.post(
             f"{API_BASE_URL}/tasks/decompose",
-            json=payload
+            json=payload,
+            timeout=60.0  # Allow up to 60 seconds for LLM-based decomposition
         )
         response.raise_for_status()
         return response.json() # This should be a list of strings
@@ -69,7 +70,8 @@ async def generate_code(prompt: str, context: Optional[Dict[str, Any]] = None, u
         
         response = await client.post(
             f"{API_BASE_URL}/code/generate",
-            json=payload
+            json=payload,
+            timeout=120.0 # Allow up to 120 seconds for potentially complex code generation
         )
         response.raise_for_status()
         return response.json() # This should be a dictionary with a "code" key
@@ -122,6 +124,17 @@ async def generate_todo_stubs(scan_path: str, output_file: str, user_profile: Op
             f"{API_BASE_URL}/automation/generate_todo_stubs",
             json=payload,
             timeout=180.0 # Allow even longer for scanning multiple files
+        )
+        response.raise_for_status()
+        return response.json()
+
+async def execute_shell_command(command: str) -> Dict[str, Any]:
+    """Executes a shell command via the Coddy API."""
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{API_BASE_URL}/shell/exec",
+            json={"command": command},
+            timeout=300.0  # Allow up to 5 minutes for long-running commands
         )
         response.raise_for_status()
         return response.json()
