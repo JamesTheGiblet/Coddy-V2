@@ -1,39 +1,38 @@
-# Coddy/backend/main.py
+# Add root to path for local imports (safe for Uvicorn & tests)
+import sys, os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+
 import asyncio
-import os
-import sys
 from typing import List, Dict, Any, Optional
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
-from Coddy.logging_utility import log_debug, log_error, log_info
-
-
-# Load environment variables from the .env file located one level up from backend
+# Load .env file
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
 
+# FastAPI & Pydantic
 from fastapi import FastAPI, APIRouter, HTTPException, Body
 from pydantic import BaseModel, Field
 
-try:
-    from ..core.memory_service import MemoryService
-    from ..core.utility_functions import read_file, write_file, list_files
-    from ..core.execution_manager import ExecutionManager
-    from ..core.vibe_mode import VibeModeEngine
-    from ..core.code_generator import CodeGenerator
-    from ..core.task_decomposition_engine import TaskDecompositionEngine
-    from ..core.git_analyzer import GitAnalyzer
-    from ..core.user_profile import UserProfile
-    from ..core.changelog_generator import ChangelogGenerator
-    from ..core.stub_auto_generator import StubAutoGenerator
-    from ..core.llm_provider import get_llm_provider
+# Coddy core modules
+from Coddy.core.utility_functions import read_file, write_file, list_files
+from Coddy.core.logging_utility import log_info, log_warning, log_error, log_debug
+from Coddy.core.memory_service import MemoryService
+from Coddy.core.execution_manager import ExecutionManager
+from Coddy.core.vibe_mode import VibeModeEngine
+from Coddy.core.code_generator import CodeGenerator
+from Coddy.core.task_decomposition_engine import TaskDecompositionEngine
+from Coddy.core.git_analyzer import GitAnalyzer
+from Coddy.core.user_profile import UserProfile
+from Coddy.core.changelog_generator import ChangelogGenerator
+from Coddy.core.stub_auto_generator import StubAutoGenerator
+from Coddy.core.llm_provider import get_llm_provider
 
-except ImportError as e:
-    print(f"FATAL ERROR: Could not import core modules required for FastAPI backend: {e}", file=sys.stderr)
-    sys.exit(1)
-
-# Import Routers
-from .api.routers import automation
+# API routers
+from backend.api.routers import automation
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await log_info("Coddy Backend: All modules successfully imported.")
 
 # NEW: Declare services dictionary globally here
 services: Dict[str, Any] = {} 

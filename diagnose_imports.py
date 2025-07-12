@@ -10,7 +10,7 @@ print("-" * 30)
 
 try:
     print("Attempting to import Coddy.core.logging_utility...")
-    from Coddy.logging_utility import log_debug, log_error, log_info
+    from Coddy.core.logging_utility import log_debug, log_error, log_info
     print("SUCCESS: Successfully imported Coddy.core.logging_utility!")
     # Try calling a function to ensure it's fully loaded
     async def run_log_test():

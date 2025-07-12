@@ -5,7 +5,7 @@ import websockets # Install with: pip install websockets
 import json
 import logging
 from typing import Set, Dict, Any
-from core.config import WEBSOCKET_HOST, WEBSOCKET_PORT, WEBSOCKET_URL # Import from central config
+from Coddy.core.config import WEBSOCKET_HOST, WEBSOCKET_PORT, WEBSOCKET_URL # Import from central config
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

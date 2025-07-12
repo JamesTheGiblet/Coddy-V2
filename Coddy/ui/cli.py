@@ -25,7 +25,7 @@ try:
     from Coddy.core.pattern_oracle import PatternOracle
     from Coddy.core.websocket_server import send_to_websocket_server
     from Coddy.core.vibe_mode import VibeModeEngine
-    from Coddy.logging_utility import log_info, log_warning, log_error, log_debug
+    from Coddy.core.logging_utility import log_info, log_warning, log_error, log_debug
     from Coddy.core.git_analyzer import GitAnalyzer
     from Coddy.core.execution_manager import ExecutionManager, execute_command 
     from Coddy.core.autonomous_agent import AutonomousAgent 

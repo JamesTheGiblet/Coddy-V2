@@ -8,7 +8,7 @@ from typing import Any, Optional, List, Dict
 
 # Use absolute imports from the project root for consistency
 from core.utility_functions import write_file
-from Coddy.logging_utility import log_info, log_warning, log_error, log_debug
+from core.logging_utility import log_info, log_warning, log_error, log_debug
 from core.user_profile import UserProfile
 from core.git_analyzer import GitAnalyzer
 # REMOVED: from langchain_google_genai import ChatGoogleGenerativeAI # No longer instantiate here
