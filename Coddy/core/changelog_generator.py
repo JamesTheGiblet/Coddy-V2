@@ -5,13 +5,14 @@ import asyncio
 import os
 import json
 from typing import Any, Optional, List, Dict
+# REMOVED: from datetime import datetime # No longer needed here, moved to utility_functions
 
 # Use absolute imports from the project root for consistency
-from core.utility_functions import write_file
+# MODIFIED: Import save_file_in_timestamped_folder from utility_functions
+from core.utility_functions import write_file, save_file_in_timestamped_folder 
 from core.logging_utility import log_info, log_warning, log_error, log_debug
 from core.user_profile import UserProfile
 from core.git_analyzer import GitAnalyzer
-# REMOVED: from langchain_google_genai import ChatGoogleGenerativeAI # No longer instantiate here
 from core.llm_provider import LLMProvider # NEW: Import LLMProvider base class for type hinting
 
 class ChangelogGenerator:
@@ -84,18 +85,17 @@ class ChangelogGenerator:
             await log_error(f"LLM failed to generate changelog: {e}", exc_info=True)
             return f"# Changelog Generation Failed\n\nAn error occurred: {e}"
 
-        # Save to file
-        await self.save_changelog_to_file(changelog_content=changelog_content, file_path=output_file)
+        # Save to file using the new generic function from utility_functions
+        await save_file_in_timestamped_folder(
+            content=changelog_content, 
+            file_path=output_file, 
+            category="changelogs"
+        )
 
         await log_info(f"Changelog generated with {len(commits)} commits.")
         return changelog_content
 
-    async def save_changelog_to_file(self, *, changelog_content: str, file_path: str = "CHANGELOG.md"):
-        try:
-            await write_file(file_path, changelog_content)
-            await log_info(f"Changelog saved to {file_path}")
-        except Exception as e:
-            await log_error(f"Error saving changelog to file {file_path}: {e}", exc_info=True)
+    # REMOVED: _save_file_in_timestamped_folder as it's moved to utility_functions.py
 
 async def main_changelog_test():
     # This test setup needs to be updated to pass dependencies

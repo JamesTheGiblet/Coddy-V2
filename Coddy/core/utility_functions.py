@@ -3,8 +3,8 @@
 import os
 import asyncio
 import aiofiles # For asynchronous file I/O
-# Removed: import subprocess # No longer needed as execute_command is moved
 import sys
+from datetime import datetime # NEW: Import datetime for timestamps
 
 # Define base project directory relative to where this script might be run
 # Adjust this if your execution context differs significantly
@@ -115,6 +115,45 @@ async def list_files(directory_path: str = './') -> list[str]:
         print(f"Error listing directory '{absolute_path}': {e}")
         raise
 
+async def save_file_in_timestamped_folder(content: str, file_path: str, category: str):
+    """
+    Saves content to a file within a timestamped directory, categorized by type.
+    This function is designed to be generic for various generated outputs.
+    
+    Args:
+        content (str): The content to save to the file.
+        file_path (str): The desired filename, including its extension (e.g., "CHANGELOG.md").
+        category (str): A string representing the category of the file (e.g., "changelogs", "roadmaps", "readmes", "requirements", "code").
+    """
+    try:
+        # Extract filename from the provided file_path
+        output_filename = os.path.basename(file_path)
+        file_name_without_ext = os.path.splitext(output_filename)[0]
+
+        # Generate a timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Define the base output directory
+        base_output_dir = "generated_output" 
+
+        # Create a category-specific subfolder
+        category_dir = os.path.join(base_output_dir, category)
+
+        # Create the timestamped directory within the category folder
+        timestamped_dir = os.path.join(category_dir, f"{file_name_without_ext}_{timestamp}")
+        os.makedirs(timestamped_dir, exist_ok=True)
+        # log_info is not available directly here, use print for now
+        print(f"Created directory: {timestamped_dir}")
+
+        # Construct the full file path
+        full_file_path = os.path.join(timestamped_dir, output_filename)
+
+        await write_file(full_file_path, content)
+        print(f"File saved to {full_file_path}")
+    except Exception as e:
+        print(f"Error saving file to {file_path} in category {category}: {e}")
+        raise
+
 # Removed execute_command function as it has been moved to core/execution_manager.py
 
 # Example Usage (for testing the utility functions)
@@ -148,8 +187,13 @@ async def main_test_utilities():
     except Exception as e:
         print(f"List Files Test Failed: {e}")
 
-    # Note: execute_command test removed as the function is no longer in this file.
-    # You can test execute_command via the ExecutionManager or directly from its new location.
+    # Test save_file_in_timestamped_folder
+    test_content_timestamped = "This content should be in a timestamped folder."
+    try:
+        await save_file_in_timestamped_folder(test_content_timestamped, "test_doc.md", "documents")
+        await save_file_in_timestamped_folder("Another test for code.", "my_script.py", "code")
+    except Exception as e:
+        print(f"Timestamped Save Test Failed: {e}")
 
     print("\n--- End of Utility Function Tests ---")
 

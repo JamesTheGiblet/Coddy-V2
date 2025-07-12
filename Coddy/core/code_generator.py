@@ -21,6 +21,7 @@ try:
     from core.logging_utility import log_info, log_warning, log_error, log_debug
     from core.user_profile import UserProfile
     from core.llm_provider import LLMProvider # NEW: Import LLMProvider for type hinting
+    from core.utility_functions import save_file_in_timestamped_folder # NEW: Import for saving files
     
 except ImportError as e:
     print(f"FATAL ERROR: Could not import core modules required for CodeGenerator: {e}", file=sys.stderr)
@@ -57,11 +58,13 @@ class CodeGenerator:
         """
         await log_info("CodeGenerator initialized.") # Now correctly awaited
 
-    async def generate_code(self, prompt: str, context: Optional[Dict[str, Any]] = None, 
+    async def generate_code(self, prompt: str, output_file: Optional[str] = None, 
+                            context: Optional[Dict[str, Any]] = None, 
                             user_profile: Optional[Dict[str, Any]] = None) -> str:
         """
         Generates general code based on a prompt and optional context,
         delegating personalization and logging to the IdeaSynthesizer.
+        If output_file is provided, saves the generated content to a timestamped folder.
         """
         await log_info(f"Generating code for prompt: {prompt[:100]}...")
         
@@ -71,16 +74,35 @@ class CodeGenerator:
             full_prompt += f"\n\nAdditional Context:\n{json.dumps(context, indent=2)}"
         
         try:
-            return await self.idea_synthesizer.synthesize_idea(full_prompt, user_profile=user_profile)
+            generated_content = await self.idea_synthesizer.synthesize_idea(full_prompt, user_profile=user_profile)
             await log_info("Code generation complete.")
+
+            if output_file:
+                # Determine category based on file name
+                category = "code" # Default category for general code
+                if output_file.lower() == "readme.md":
+                    category = "readmes"
+                elif output_file.lower() == "requirements.txt":
+                    category = "requirements"
+                
+                await save_file_in_timestamped_folder(
+                    content=generated_content,
+                    file_path=output_file,
+                    category=category
+                )
+                await log_info(f"Generated content saved to {output_file} in a timestamped folder under '{category}'.")
+            
+            return generated_content
         except Exception as e:
             await log_error(f"Error during code generation: {e}", exc_info=True)
             return f"# Error generating code: {e}"
 
-    async def generate_unit_tests(self, file_path: str, context: Optional[Dict[str, Any]] = None,
+    async def generate_unit_tests(self, file_path: str, output_file: Optional[str] = None, 
+                                  context: Optional[Dict[str, Any]] = None,
                                   user_profile: Optional[Dict[str, Any]] = None) -> str:
         """
         Generates unit tests for a given file, delegating personalization to IdeaSynthesizer.
+        If output_file is provided, saves the generated content to a timestamped folder.
         """
         await log_info(f"Generating unit tests for file: {file_path}")
         
@@ -95,15 +117,22 @@ class CodeGenerator:
         try:
             result = await self.idea_synthesizer.synthesize_idea(prompt, user_profile=user_profile)
             await log_info("Unit test generation complete.")
+            
+            if output_file:
+                await save_file_in_timestamped_folder(result, output_file, "tests") # New category "tests"
+                await log_info(f"Generated unit tests saved to {output_file} in a timestamped folder under 'tests'.")
+            
             return result
         except Exception as e:
             await log_error(f"Error during unit test generation: {e}", exc_info=True)
             return f"# Error generating unit tests: {e}"
 
-    async def generate_code_fix(self, file_path: str, context: Optional[Dict[str, Any]] = None,
+    async def generate_code_fix(self, file_path: str, output_file: Optional[str] = None, 
+                                context: Optional[Dict[str, Any]] = None,
                                 user_profile: Optional[Dict[str, Any]] = None) -> str:
         """
         Generates a code fix, delegating personalization and logging to IdeaSynthesizer.
+        If output_file is provided, saves the generated content to a timestamped folder.
         """
         await log_info(f"Generating code fix for file: {file_path}")
 
@@ -128,6 +157,10 @@ class CodeGenerator:
             # Pass user_profile to IdeaSynthesizer for deeper personalization
             corrected_code = await self.idea_synthesizer.synthesize_idea(prompt, user_profile=user_profile)
             await log_info("Code fix generation complete.")
+            
+            if output_file:
+                await save_file_in_timestamped_folder(corrected_code, output_file, "fixes") # New category "fixes"
+                await log_info(f"Generated code fix saved to {output_file} in a timestamped folder under 'fixes'.")
         except Exception as e:
             await log_error(f"Error during code fix generation: {e}", exc_info=True)
             corrected_code = f"# Error generating code fix: {e}"
@@ -144,4 +177,3 @@ class CodeGenerator:
                 }
                 await self.user_profile_manager.update_last_interaction_summary(summary)
             return corrected_code
-

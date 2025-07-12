@@ -1,60 +1,55 @@
-import tkinter as tk
+This code integrates a clock display with a function that plays a funny sound or phrase.  Because I don't have access to your specific sound files or preferred phrase, I'll provide placeholders.  You'll need to replace these with your actual resources.  This example uses `playsound` for audio playback; you may need to install it (`pip install playsound`).
+
+```python
 import time
-import random
+import datetime
+import os
+from playsound import playsound #Requires installation: pip install playsound
 
-# --- Clock Core ---
-def update_clock():
-    current_time = time.strftime("%H:%M:%S")
-    clock_label.config(text=current_time)
-    clock_label.after(1000, update_clock)  # Update every second
-
-# --- Funny Phrase, Font, and Color Selectors ---
-phrases = [
-    "Hello, world!",
-    "Python is awesome!",
-    "Keep calm and code on!",
-    "Debugging is a journey, not a destination.",
-    "May your coffee be strong and your bugs be few."
-]
-
-fonts = ["Arial", "Times New Roman", "Courier", "Helvetica"]
-colors = ["red", "green", "blue", "yellow", "purple"]
-
-def change_phrase():
-    new_phrase = random.choice(phrases)
-    phrase_label.config(text=new_phrase)
-
-def change_font():
-    new_font = random.choice(fonts)
-    phrase_label.config(font=new_font)
-
-def change_color():
-    new_color = random.choice(colors)
-    phrase_label.config(fg=new_color) # fg changes the text color
+def play_funny_sound():
+    """Plays a funny sound or says a funny phrase."""
+    try:
+        # Replace 'path/to/your/funny_sound.mp3' with the actual path
+        playsound('path/to/your/funny_sound.mp3') 
+    except playsound.PlaysoundException as e:
+        print(f"Error playing sound: {e}")
+        try:
+            #Fallback to a text-based "funny" phrase if sound fails
+            print("Boing!  That was supposed to be a funny sound!")
+        except Exception as e:
+            print(f"Error with fallback: {e}")
 
 
-# --- GUI ---
-root = tk.Tk()
-root.title("Clock & Funny Phrase App")
-
-# Clock
-clock_label = tk.Label(root, font=("Helvetica", 48), text="")
-clock_label.pack(pady=20)
-update_clock()
-
-# Phrase
-phrase_label = tk.Label(root, text=random.choice(phrases), font=("Arial", 24))
-phrase_label.pack(pady=10)
-
-# Buttons
-phrase_button = tk.Button(root, text="New Phrase", command=change_phrase)
-phrase_button.pack(pady=5)
-
-font_button = tk.Button(root, text="New Font", command=change_font)
-font_button.pack(pady=5)
-
-color_button = tk.Button(root, text="New Color", command=change_color)
-color_button.pack(pady=5)
+def display_clock():
+    """Displays the current time in HH:MM:SS format."""
+    while True:
+        now = datetime.datetime.now()
+        current_time = now.strftime("%H:%M:%S")
+        print(f"\rCurrent time: {current_time}", end="", flush=True)  # \r for carriage return, clears previous line
+        time.sleep(1)
 
 
-root.mainloop()
+def main():
+    """Main function to run the clock and play the sound at intervals."""
+    try:
+      sound_interval = 60 # Play sound every 60 seconds (adjust as needed)
+
+      clock_thread = threading.Thread(target=display_clock)
+      clock_thread.daemon = True  # Allow the program to exit even if the clock thread is running
+      clock_thread.start()
+
+      while True:
+          time.sleep(sound_interval)
+          play_funny_sound()
+
+    except KeyboardInterrupt:
+      print("\nClock stopped.")
+    except Exception as e:
+      print(f"An error occurred: {e}")
+
+import threading
+if __name__ == "__main__":
+    main()
+```
+
+Remember to replace `"path/to/your/funny_sound.mp3"` with the correct path to your sound file.  If you want a different interval for the funny sound, change the `sound_interval` variable.  This improved version uses threading to allow the clock to run concurrently with the sound playback.  This prevents the clock from freezing while a sound plays.
