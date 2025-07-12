@@ -7,7 +7,7 @@ import os
 import datetime
 from typing import List, Dict, Optional, Any, Union
 
-from Coddy.core.logging_utility import log_info, log_warning, log_error, log_debug
+from Coddy.logging_utility import log_info, log_warning, log_error, log_debug
 
 API_BASE_URL = os.getenv("CODY_API_BASE_URL", "http://127.0.0.1:8000")
 

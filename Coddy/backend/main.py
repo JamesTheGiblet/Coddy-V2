@@ -6,7 +6,8 @@ from typing import List, Dict, Any, Optional
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
-from ..core.logging_utility import log_debug, log_error, log_info
+from Coddy.logging_utility import log_debug, log_error, log_info
+
 
 # Load environment variables from the .env file located one level up from backend
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
@@ -32,7 +33,7 @@ except ImportError as e:
     sys.exit(1)
 
 # Import Routers
-from backend.api.routers import automation
+from .api.routers import automation
 
 # NEW: Declare services dictionary globally here
 services: Dict[str, Any] = {} 

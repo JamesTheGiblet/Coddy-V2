@@ -18,7 +18,7 @@ try:
     from core.idea_synth import IdeaSynthesizer
     from core.memory_service import MemoryService
     from core.vibe_mode import VibeModeEngine
-    from core.logging_utility import log_info, log_warning, log_error, log_debug
+    from Coddy.logging_utility import log_info, log_warning, log_error, log_debug
     from core.user_profile import UserProfile
     from core.llm_provider import LLMProvider # NEW: Import LLMProvider for type hinting
     

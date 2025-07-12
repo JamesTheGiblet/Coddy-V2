@@ -8,7 +8,7 @@ import shlex
 import datetime # Import datetime for _display_message
 from typing import Optional, List, Dict, Any
 
-from logging_utility import log_debug, log_error, log_info, log_warning
+from Coddy.logging_utility import log_debug, log_error, log_info, log_warning
 from websocket_server import send_to_websocket_server
 
 # Assuming these are available from the core module or passed in

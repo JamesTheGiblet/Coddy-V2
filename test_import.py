@@ -6,7 +6,7 @@ print(f"Current Working Directory: {os.getcwd()}")
 print(f"sys.path: {sys.path}")
 
 try:
-    from Coddy.core.logging_utility import log_debug, log_error, log_info
+    from Coddy.logging_utility import log_debug, log_error, log_info
     print("Successfully imported logging_utility!")
 except ImportError as e:
     print(f"ImportError encountered: {e}")

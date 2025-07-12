@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from Coddy.models.user_profile_model import UserProfileModel, Feedback
 from Coddy.core.memory_service import MemoryService
-from Coddy.core.logging_utility import log_info, log_warning, log_error
+from Coddy.logging_utility import log_info, log_warning, log_error
 
 class UserProfile:
     """

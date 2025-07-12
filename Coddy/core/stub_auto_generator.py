@@ -13,7 +13,7 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 try:
-    from Coddy.core.logging_utility import log_info, log_warning, log_error, log_debug
+    from Coddy.logging_utility import log_info, log_warning, log_error, log_debug
     from Coddy.core.utility_functions import read_file, write_file # Use utility_functions for file I/O
     # Using 'Any' for type hints in __init__ to avoid 'Variable not allowed in type expression' error.
     # Ideally, direct class names would work with 'from __future__ import annotations'.

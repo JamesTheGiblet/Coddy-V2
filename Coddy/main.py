@@ -1,8 +1,3 @@
-This task requires several components. I can't create a fully functional GUI application within this response due to the limitations of this text-based interface.  However, I can provide you with a structured Python code outline and explanations of the key parts, which you can then integrate using a GUI framework like Tkinter, PyQt, or Kivy.
-
-This example uses Tkinter for its simplicity.  You'll need to install it if you don't already have it (`pip install tkinter`).
-
-```python
 import tkinter as tk
 import time
 import random
@@ -63,12 +58,3 @@ color_button.pack(pady=5)
 
 
 root.mainloop()
-```
-
-This code provides:
-
-* **Clock Core:**  The `update_clock` function continuously updates the time display.
-* **Funny Phrase, Font, and Color Selectors:**  Lists of phrases, fonts, and colors are used, and functions randomly select and apply them.
-* **GUI (Tkinter):**  A simple Tkinter GUI integrates the clock and the phrase display with buttons to change the phrase, font and color.
-
-Remember to expand this code to include more sophisticated features, error handling, and potentially a more visually appealing design using  Tkinter's layout managers (like `grid` or `place`) for better control over the GUI's appearance.  Consider exploring other GUI frameworks like PyQt or Kivy for more advanced features and customization options.

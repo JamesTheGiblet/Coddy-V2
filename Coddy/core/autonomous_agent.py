@@ -15,7 +15,7 @@ from core.code_generator import CodeGenerator # For direct code generation if ne
 
 # Assuming these are available from the core module or passed in
 from core.websocket_server import send_to_websocket_server
-from core.logging_utility import log_info, log_warning, log_error, log_debug
+from Coddy.logging_utility import log_info, log_warning, log_error, log_debug
 from core.user_profile import UserProfile  # Import UserProfile to fix the error
 
 class AutonomousAgent:
