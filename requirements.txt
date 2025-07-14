@@ -1,0 +1,32 @@
+# Core FastAPI framework
+fastapi
+
+# ASGI server for FastAPI
+uvicorn[standard]
+
+# Data validation
+pydantic
+
+# For asynchronous file operations
+aiofiles
+
+# For file system watching
+watchdog
+
+# For loading environment variables from .env files
+python-dotenv
+
+# For Google Gemini API
+google-generativeai
+
+# For LangChain core components (used in idea_synth.py)
+langchain-core
+
+# For rich terminal output (used in roadmap_plugin/cli.py)
+rich
+
+# For the web dashboard UI
+streamlit
+
+# Allows nested asyncio event loops, needed for Streamlit + async calls
+nest-asyncio
