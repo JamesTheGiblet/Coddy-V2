@@ -209,3 +209,4 @@ class CodeGenerator:
                 }
                 await self.user_profile_manager.update_last_interaction_summary(summary)
             return corrected_code
+ 
