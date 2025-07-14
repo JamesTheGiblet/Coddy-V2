@@ -9,7 +9,7 @@ from typing import Any, Optional, List, Dict
 
 # Use absolute imports from the project root for consistency
 # MODIFIED: Import save_file_in_timestamped_folder from utility_functions
-from core.utility_functions import write_file, save_file_in_timestamped_folder 
+from core.utility_functions import write_file, save_generated_file 
 from core.logging_utility import log_info, log_warning, log_error, log_debug
 from core.user_profile import UserProfile
 from core.git_analyzer import GitAnalyzer
@@ -85,11 +85,24 @@ class ChangelogGenerator:
             await log_error(f"LLM failed to generate changelog: {e}", exc_info=True)
             return f"# Changelog Generation Failed\n\nAn error occurred: {e}"
 
+        # Extract project_name and actual filename from the output_file path.
+        # This logic mirrors the CodeGenerator to correctly handle saving files
+        # either into a project-specific folder or as a standalone timestamped file.
+        project_name = None
+        actual_filename = output_file
+
+        # Only treat as a project path if it's a relative path containing a separator.
+        if os.sep in output_file and not os.path.isabs(output_file):
+            parts = output_file.split(os.sep, 1)
+            project_name = parts[0]
+            actual_filename = parts[1] if len(parts) > 1 and parts[1] else "CHANGELOG.md"
+
         # Save to file using the new generic function from utility_functions
-        await save_file_in_timestamped_folder(
+        await save_generated_file(
             content=changelog_content, 
-            file_path=output_file, 
-            category="changelogs"
+            file_name=actual_filename, 
+            category="changelogs",
+            project_name=project_name
         )
 
         await log_info(f"Changelog generated with {len(commits)} commits.")

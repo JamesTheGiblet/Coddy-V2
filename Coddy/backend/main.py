@@ -28,14 +28,12 @@ from Coddy.core.changelog_generator import ChangelogGenerator
 from Coddy.core.stub_auto_generator import StubAutoGenerator
 from Coddy.core.llm_provider import get_llm_provider
 
-# API routers
-from backend.api.routers import automation
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    await log_info("Coddy Backend: All modules successfully imported.")
+# NEW: Import the centralized services dictionary to break the circular import.
+from backend.services import services
 
-# NEW: Declare services dictionary globally here
-services: Dict[str, Any] = {} 
+# API routers
+# Routers that depend on `services` are imported here.
+from backend.api.routers import automation
 
 # --- Pydantic Models ---
 class FilePath(BaseModel):
@@ -111,12 +109,12 @@ async def lifespan(app: FastAPI):
     """Initializes core services when the FastAPI application starts."""
     LLM_MODEL_NAME = "gemini-1.5-flash-latest"
     LLM_PROVIDER_TYPE = "gemini"
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") # NEW: Get API key from environment
 
     await log_info("Coddy Backend API: Initializing core services...")
     try:
         # services dictionary is now populated directly as it's a global variable
-        # REMOVED: global services # No longer needed as services is now globally declared
-        services["memory_service"] = MemoryService(session_id=DEFAULT_SESSION_ID, user_id=DEFAULT_USER_ID, is_backend_core=True)
+        services["memory_service"] = MemoryService(session_id=DEFAULT_SESSION_ID, user_id=DEFAULT_USER_ID, is_backend_core=True) # Now populates the imported services dict
         
         services["user_profile_manager"] = UserProfile(
             session_id=DEFAULT_SESSION_ID, 
@@ -127,7 +125,10 @@ async def lifespan(app: FastAPI):
 
         services["llm_provider"] = get_llm_provider(
             provider_name=LLM_PROVIDER_TYPE,
-            config={"model": LLM_MODEL_NAME}
+            config={
+                "model": LLM_MODEL_NAME,
+                "api_key": GEMINI_API_KEY # NEW: Pass API key to provider
+            }
         )
         await log_info("LLMProvider initialized.")
 
@@ -434,11 +435,6 @@ async def add_feedback_endpoint(request: FeedbackRequest):
 
 
 app.include_router(api_router)
-
-# IMPORTANT: Make services a global variable *outside* lifespan
-# This ensures it's accessible by the route handlers after lifespan completes.
-# It's initialized within lifespan, but its reference needs to be global.
-# services: Dict[str, Any] = {} # This line is now moved to the top
 
 if __name__ == "__main__":
     import uvicorn

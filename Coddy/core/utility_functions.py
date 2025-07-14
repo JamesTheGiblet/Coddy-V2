@@ -4,7 +4,8 @@ import os
 import asyncio
 import aiofiles # For asynchronous file I/O
 import sys
-from datetime import datetime # NEW: Import datetime for timestamps
+from datetime import datetime # Import datetime for timestamps
+from typing import Optional # Import Optional for type hinting
 
 # Define base project directory relative to where this script might be run
 # Adjust this if your execution context differs significantly
@@ -115,43 +116,47 @@ async def list_files(directory_path: str = './') -> list[str]:
         print(f"Error listing directory '{absolute_path}': {e}")
         raise
 
-async def save_file_in_timestamped_folder(content: str, file_path: str, category: str):
+async def save_generated_file(content: str, file_name: str, category: str, project_name: Optional[str] = None):
     """
-    Saves content to a file within a timestamped directory, categorized by type.
-    This function is designed to be generic for various generated outputs.
+    Saves generated content to a file within a structured output directory.
+    If project_name is provided, it creates a project-specific folder:
+    'generated_output/{project_name}/{file_name}'.
+    Otherwise, it creates a timestamped category folder:
+    'generated_output/{category}/{file_name_without_ext}_{timestamp}/{file_name}'.
     
     Args:
         content (str): The content to save to the file.
-        file_path (str): The desired filename, including its extension (e.g., "CHANGELOG.md").
+        file_name (str): The name of the file, including its extension (e.g., "README.md", "main.py").
         category (str): A string representing the category of the file (e.g., "changelogs", "roadmaps", "readmes", "requirements", "code").
+        project_name (Optional[str]): The name of the project. If provided, files are saved into 'generated_output/{project_name}/'.
+                                      If None, the old timestamped category folder logic is used.
     """
     try:
-        # Extract filename from the provided file_path
-        output_filename = os.path.basename(file_path)
-        file_name_without_ext = os.path.splitext(output_filename)[0]
-
-        # Generate a timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
-        # Define the base output directory
         base_output_dir = "generated_output" 
+        
+        if project_name:
+            # Create a project-specific directory: generated_output/project_name/
+            target_dir = os.path.join(base_output_dir, project_name)
+            full_file_path = os.path.join(target_dir, file_name)
+            print(f"Saving to project-specific directory: {target_dir}")
+        else:
+            # Fallback to the previous timestamped category folder logic
+            # This is primarily for non-project-specific outputs (like standalone changelogs)
+            file_name_without_ext = os.path.splitext(file_name)[0]
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            category_dir = os.path.join(base_output_dir, category)
+            target_dir = os.path.join(category_dir, f"{file_name_without_ext}_{timestamp}")
+            full_file_path = os.path.join(target_dir, file_name)
+            print(f"Saving to timestamped category directory: {target_dir}")
 
-        # Create a category-specific subfolder
-        category_dir = os.path.join(base_output_dir, category)
-
-        # Create the timestamped directory within the category folder
-        timestamped_dir = os.path.join(category_dir, f"{file_name_without_ext}_{timestamp}")
-        os.makedirs(timestamped_dir, exist_ok=True)
-        # log_info is not available directly here, use print for now
-        print(f"Created directory: {timestamped_dir}")
-
-        # Construct the full file path
-        full_file_path = os.path.join(timestamped_dir, output_filename)
+        os.makedirs(target_dir, exist_ok=True)
+        print(f"Created directory: {target_dir}")
 
         await write_file(full_file_path, content)
         print(f"File saved to {full_file_path}")
     except Exception as e:
-        print(f"Error saving file to {file_path} in category {category}: {e}")
+        print(f"Error saving file '{file_name}' in category '{category}' (Project: {project_name}): {e}")
         raise
 
 # Removed execute_command function as it has been moved to core/execution_manager.py
@@ -187,11 +192,18 @@ async def main_test_utilities():
     except Exception as e:
         print(f"List Files Test Failed: {e}")
 
-    # Test save_file_in_timestamped_folder
+    # Test save_generated_file with project_name (NEW desired behavior)
+    test_content_project = "This content should be in a project folder."
+    try:
+        await save_generated_file(test_content_project, "project_readme.md", "readmes", project_name="my_new_app")
+        await save_generated_file("print('Hello, project!')", "main.py", "code", project_name="my_new_app")
+    except Exception as e:
+        print(f"Project-based Save Test Failed: {e}")
+
+    # Test save_generated_file without project_name (fallback to timestamped category)
     test_content_timestamped = "This content should be in a timestamped folder."
     try:
-        await save_file_in_timestamped_folder(test_content_timestamped, "test_doc.md", "documents")
-        await save_file_in_timestamped_folder("Another test for code.", "my_script.py", "code")
+        await save_generated_file(test_content_timestamped, "test_doc.md", "documents")
     except Exception as e:
         print(f"Timestamped Save Test Failed: {e}")
 

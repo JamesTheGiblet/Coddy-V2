@@ -21,7 +21,7 @@ try:
     from core.logging_utility import log_info, log_warning, log_error, log_debug
     from core.user_profile import UserProfile
     from core.llm_provider import LLMProvider # NEW: Import LLMProvider for type hinting
-    from core.utility_functions import save_file_in_timestamped_folder # NEW: Import for saving files
+    from core.utility_functions import save_generated_file # MODIFIED: Renamed import
     
 except ImportError as e:
     print(f"FATAL ERROR: Could not import core modules required for CodeGenerator: {e}", file=sys.stderr)
@@ -80,17 +80,33 @@ class CodeGenerator:
             if output_file:
                 # Determine category based on file name
                 category = "code" # Default category for general code
-                if output_file.lower() == "readme.md":
-                    category = "readmes"
-                elif output_file.lower() == "requirements.txt":
-                    category = "requirements"
                 
-                await save_file_in_timestamped_folder(
+                # Extract project_name and actual filename from output_file path
+                # output_file is expected to be "project_name/filename.ext"
+                # If it's just "filename.ext", project_name will be None
+                project_name = None
+                actual_filename = output_file
+                
+                if os.sep in output_file:
+                    parts = output_file.split(os.sep)
+                    project_name = parts[0]
+                    actual_filename = os.sep.join(parts[1:]) # Rejoin remaining parts for filename
+
+                if actual_filename.lower() == "readme.md":
+                    category = "readmes"
+                elif actual_filename.lower() == "requirements.txt":
+                    category = "requirements"
+                elif actual_filename.lower() == "roadmap.md": # Added roadmap.md
+                    category = "roadmaps"
+                # For other code files, 'code' category is fine.
+
+                await save_generated_file(
                     content=generated_content,
-                    file_path=output_file,
-                    category=category
+                    file_name=actual_filename, # Pass just the filename
+                    category=category,
+                    project_name=project_name # Pass the extracted project_name
                 )
-                await log_info(f"Generated content saved to {output_file} in a timestamped folder under '{category}'.")
+                await log_info(f"Generated content saved to {output_file} under '{category}' for project '{project_name}'.")
             
             return generated_content
         except Exception as e:
@@ -119,8 +135,16 @@ class CodeGenerator:
             await log_info("Unit test generation complete.")
             
             if output_file:
-                await save_file_in_timestamped_folder(result, output_file, "tests") # New category "tests"
-                await log_info(f"Generated unit tests saved to {output_file} in a timestamped folder under 'tests'.")
+                # Extract project_name and actual filename from output_file path
+                project_name = None
+                actual_filename = output_file
+                if os.sep in output_file:
+                    parts = output_file.split(os.sep)
+                    project_name = parts[0]
+                    actual_filename = os.sep.join(parts[1:])
+
+                await save_generated_file(result, actual_filename, "tests", project_name) # New category "tests"
+                await log_info(f"Generated unit tests saved to {output_file} under 'tests' for project '{project_name}'.")
             
             return result
         except Exception as e:
@@ -159,8 +183,16 @@ class CodeGenerator:
             await log_info("Code fix generation complete.")
             
             if output_file:
-                await save_file_in_timestamped_folder(corrected_code, output_file, "fixes") # New category "fixes"
-                await log_info(f"Generated code fix saved to {output_file} in a timestamped folder under 'fixes'.")
+                # Extract project_name and actual filename from output_file path
+                project_name = None
+                actual_filename = output_file
+                if os.sep in output_file:
+                    parts = output_file.split(os.sep)
+                    project_name = parts[0]
+                    actual_filename = os.sep.join(parts[1:])
+
+                await save_generated_file(corrected_code, actual_filename, "fixes", project_name) # New category "fixes"
+                await log_info(f"Generated code fix saved to {output_file} under 'fixes' for project '{project_name}'.")
         except Exception as e:
             await log_error(f"Error during code fix generation: {e}", exc_info=True)
             corrected_code = f"# Error generating code fix: {e}"

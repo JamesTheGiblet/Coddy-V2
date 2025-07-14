@@ -118,14 +118,22 @@ class TaskDecompositionEngine:
         # or if the LLM-based decomposition fails.
         goal_lower = goal.lower().strip()
 
+        # NEW: Derive a project name from the goal
+        # Sanitize the goal to create a valid directory name
+        project_name_raw = re.sub(r'[^\w\s-]', '', goal_lower).strip() # Remove non-alphanumeric except space/hyphen
+        project_name = project_name_raw.replace(' ', '_') # Replace spaces with underscores
+        if not project_name: # Fallback if goal is empty or only special chars
+            project_name = "generated_project"
+
         # Hardcoded decomposition logic for specific keywords (can be replaced by LLM over time)
         if "funny clock" in goal_lower:
             tasks = []
             
             # Always include README.md, roadmap.md, and requirements.txt
-            tasks.append(f'generate_code "Generate a basic README.md file for a new software project based on the goal: \'{goal}\'. Include sections for project title, description, installation, usage, and contribution." "README.md"')
-            tasks.append(f'generate_code "Generate a basic requirements.txt file for a Python project based on the goal: \'{goal}\'. Include common dependencies like \'requests\', \'asyncio\', \'json\', \'tkinter\' (if GUI), etc., if applicable." "requirements.txt"')
-            tasks.append(f'generate_code "Generate a high-level roadmap.md for a new software project based on the goal: \'{goal}\'. Include phases like \'Phase 1: Core Functionality\', \'Phase 2: Enhancements\', \'Phase 3: Deployment\'." "roadmap.md"')
+            # MODIFIED: Prepend project_name to output_file paths
+            tasks.append(f'generate_code "Generate a basic README.md file for a new software project based on the goal: \'{goal}\'. Include sections for project title, description, installation, usage, and contribution." "{project_name}/README.md"')
+            tasks.append(f'generate_code "Generate a basic requirements.txt file for a Python project based on the goal: \'{goal}\'. Include common dependencies like \'requests\', \'asyncio\', \'json\', \'tkinter\' (if GUI), etc., if applicable." "{project_name}/requirements.txt"')
+            tasks.append(f'generate_code "Generate a high-level roadmap.md for a new software project based on the goal: \'{goal}\'. Include phases like \'Phase 1: Core Functionality\', \'Phase 2: Enhancements\', \'Phase 3: Deployment\'." "{project_name}/roadmap.md"')
 
 
             # Determine language and display based on goal, otherwise default
@@ -137,20 +145,21 @@ class TaskDecompositionEngine:
                 js_animations_prompt = "JavaScript to add simple emoji animations or visual effects to the clock display, updating every second."
                 
                 print(f"DEBUG: Generating HTML with prompt: '{html_prompt}'")
-                tasks.append(f'generate_code "{html_prompt}" "index.html"')
+                tasks.append(f'generate_code "{html_prompt}" "{project_name}/index.html"')
                 print(f"DEBUG: Generating CSS with prompt: '{css_prompt}'")
-                tasks.append(f'generate_code "{css_prompt}" "style.css"')
+                tasks.append(f'generate_code "{css_prompt}" "{project_name}/style.css"')
                 print(f"DEBUG: Generating JavaScript (Time) with prompt: '{js_time_prompt}'")
-                tasks.append(f'generate_code "{js_time_prompt}" "script_time.js"')
+                tasks.append(f'generate_code "{js_time_prompt}" "{project_name}/script_time.js"')
                 print(f"DEBUG: Generating JavaScript (Jokes) with prompt: '{js_jokes_prompt}'")
-                tasks.append(f'generate_code "{js_jokes_prompt}" "script_jokes.js"')
+                tasks.append(f'generate_code "{js_jokes_prompt}" "{project_name}/script_jokes.js"')
                 print(f"DEBUG: Generating JavaScript (Animations) with prompt: '{js_animations_prompt}'")
-                tasks.append(f'generate_code "{js_animations_prompt}" "script_animations.js"')
+                tasks.append(f'generate_code "{js_animations_prompt}" "{project_name}/script_animations.js"')
                 
                 tasks.extend([
-                    # Removed 'write index.html' as it's now handled by generate_code with output_file
-                    # Removed 'read' commands for newly generated files
-                    'exec "start index.html" # Command to open the HTML file in a browser (Windows specific, may need adjustment for Linux/macOS)'
+                    # MODIFIED: Update write command path to include project_name
+                    f'write {project_name}/index.html "<!DOCTYPE html>\\n<html lang=\\"en\\">\\n<head>\\n    <meta charset=\\"UTF-8\\">\\n    <meta name=\\"viewport\\" content=\\"width=device-width, initial-scale=1.0\\">\\n    <title>Funny Clock</title>\\n    <link rel=\\"stylesheet\\" href=\\"style.css\\">\\n</head>\\n<body>\\n    <div id=\\"clock-container\\">\\n        <div id=\\"clock\\"></div>\\n        <div id=\\"joke-display\\"></div>\\n    </div>\\n    <script src=\\"script_time.js\\"></script>\\n    <script src=\\"script_jokes.js\\"></script>\\n    <script src=\\"script_animations.js\\"></script>\\n</body>\\n</html>"',
+                    # REMOVED: Redundant 'read' commands for newly generated web files
+                    f'exec "start {project_name}/index.html" # Command to open the HTML file in a browser (Windows specific, may need adjustment for Linux/macOS)'
                 ])
             else: # Default to Python console application
                 time_formatter_prompt = "Python function to get the current time and format it humorously (e.g., using silly units or phrases like 'o'clock-o-rama')."
@@ -164,33 +173,33 @@ class TaskDecompositionEngine:
                 funny_clock_app_prompt = "Python console application that continuously displays the current funny time, a humorous message, and applies simple console text styling. It should update every second. Integrate the 'time_formatter' function from time_formatter.py, the 'get_funny_message' function from message_generator.py, and the console text styling functions from console_effects.py. Also, call 'play_silly_sound' from sound_effects.py at the start of each minute. Ensure a clear console output with a refresh mechanism."
 
                 print(f"DEBUG: Generating Python (Time Formatter) with prompt: '{time_formatter_prompt}'")
-                tasks.append(f'generate_code "{time_formatter_prompt}" "time_formatter.py"')
+                tasks.append(f'generate_code "{time_formatter_prompt}" "{project_name}/time_formatter.py"')
                 print(f"DEBUG: Generating Python (Message Generator) with prompt: '{message_generator_prompt}'")
-                tasks.append(f'generate_code "{message_generator_prompt}" "message_generator.py"')
+                tasks.append(f'generate_code "{message_generator_prompt}" "{project_name}/message_generator.py"')
                 print(f"DEBUG: Generating Python (Sound Effects) with prompt: '{sound_effects_prompt}'")
-                tasks.append(f'generate_code "{sound_effects_prompt}" "sound_effects.py"')
+                tasks.append(f'generate_code "{sound_effects_prompt}" "{project_name}/sound_effects.py"')
                 print(f"DEBUG: Generating Python (Console Effects) with prompt: '{console_effects_prompt}'")
-                tasks.append(f'generate_code "{console_effects_prompt}" "console_effects.py"')
+                tasks.append(f'generate_code "{console_effects_prompt}" "{project_name}/console_effects.py"')
                 print(f"DEBUG: Generating Python (Funny Clock Application) with prompt: '{funny_clock_app_prompt}'")
-                tasks.append(f'generate_code "{funny_clock_app_prompt}" "funny_clock.py"')
+                tasks.append(f'generate_code "{funny_clock_app_prompt}" "{project_name}/funny_clock.py"')
                 
                 tasks.extend([
-                    'exec "python funny_clock.py"',
-                    # Removed 'read' commands for newly generated files
+                    f'exec "python {project_name}/funny_clock.py"',
+                    # REMOVED: Redundant 'read' commands for newly generated console files
                 ])
             return tasks
 
         elif "calculator" in goal_lower and "code" in goal_lower:
             # Always include README.md, roadmap.md, and requirements.txt for new code generation
             tasks = []
-            tasks.append(f'generate_code "Generate a basic README.md file for a new Python calculator project." "README.md"')
-            tasks.append(f'generate_code "Generate a basic requirements.txt file for a Python calculator project. Include common dependencies if applicable." "requirements.txt"')
-            tasks.append(f'generate_code "Generate a high-level roadmap.md for a Python calculator project." "roadmap.md"')
+            tasks.append(f'generate_code "Generate a basic README.md file for a new Python calculator project." "{project_name}/README.md"')
+            tasks.append(f'generate_code "Generate a basic requirements.txt file for a Python calculator project. Include common dependencies if applicable." "{project_name}/requirements.txt"')
+            tasks.append(f'generate_code "Generate a high-level roadmap.md for a Python calculator project." "{project_name}/roadmap.md"')
             
             # Decompose into generate_code and then read
             tasks.extend([
-                'generate_code "Python calculator with add, subtract, multiply, divide functions" "calculator.py"',
-                "read calculator.py"
+                f'generate_code "Python calculator with add, subtract, multiply, divide functions" "{project_name}/calculator.py"',
+                # REMOVED: Redundant 'read' command for calculator.py
             ])
             return tasks
 
@@ -199,24 +208,24 @@ class TaskDecompositionEngine:
             # but if it implies a new mini-project, we can add them.
             # For now, keeping it focused on the original intent.
             return [
-                "write test_script.py print(\"Hello, Coddy AI!\")", # Changed to 'write' command
-                "read test_script.py"
+                f"write {project_name}/test_script.py print(\"Hello, Coddy AI!\")", # Changed to 'write' command
+                # REMOVED: Redundant 'read' command for test_script.py
             ]
         elif "flesh out the plan" in goal_lower or goal_lower == "hello" or goal_lower == "plan":
             # For plan requests, we can also suggest generating these files
             return [
                 "ask_question: To help me flesh out the plan, could you please provide more details? What specific task or project are you thinking about, or what kind of code do you need?",
-                f'generate_code "Generate a basic README.md for a project based on the current discussion." "README.md"',
-                f'generate_code "Generate a basic requirements.txt for a project based on the current discussion." "requirements.txt"',
-                f'generate_code "Generate a high-level roadmap.md for a project based on the current discussion." "roadmap.md"'
+                f'generate_code "Generate a basic README.md for a project based on the current discussion." "{project_name}/README.md"',
+                f'generate_code "Generate a basic requirements.txt for a project based on the current discussion." "{project_name}/requirements.txt"',
+                f'generate_code "Generate a high-level roadmap.md for a project based on the current discussion." "{project_name}/roadmap.md"'
             ]
         else:
             # Generic fallback if no specific hardcoded logic matches and no user profile for LLM
             # Always include README.md, roadmap.md, and requirements.txt
             tasks = []
-            tasks.append(f'generate_code "Generate a basic README.md file for a new software project based on the goal: \'{goal}\'. Include sections for project title, description, installation, usage, and contribution." "README.md"')
-            tasks.append(f'generate_code "Generate a basic requirements.txt file for a Python project based on the goal: \'{goal}\'. Include common dependencies if applicable." "requirements.txt"')
-            tasks.append(f'generate_code "Generate a high-level roadmap.md for a new software project based on the goal: \'{goal}\'. Include phases like \'Phase 1: Core Functionality\', \'Phase 2: Enhancements\', \'Phase 3: Deployment\'." "roadmap.md"')
+            tasks.append(f'generate_code "Generate a basic README.md file for a new software project based on the goal: \'{goal}\'. Include sections for project title, description, installation, usage, and contribution." "{project_name}/README.md"')
+            tasks.append(f'generate_code "Generate a basic requirements.txt file for a Python project based on the goal: \'{goal}\'. Include common dependencies if applicable." "{project_name}/requirements.txt"')
+            tasks.append(f'generate_code "Generate a high-level roadmap.md for a new software project based on the goal: \'{goal}\'. Include phases like \'Phase 1: Core Functionality\', \'Phase 2: Enhancements\', \'Phase 3: Deployment\'." "{project_name}/roadmap.md"')
             
             tasks.extend([
                 f"LLM-based decomposition for: {goal} (Placeholder)",
