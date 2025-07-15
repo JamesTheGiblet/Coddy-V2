@@ -176,7 +176,7 @@ class TaskDecompositionEngine:
                 self.logger.debug("Applying Python console application decomposition logic.")
                 time_formatter_prompt = "Python function to get the current time and format it humorously (e.g., using silly units or phrases like 'o'clock-o-rama')."
                 message_generator_prompt = "Python function named 'get_funny_message' that returns a random, silly message from a predefined list of at least 5 messages."
-                sound_effects_prompt = "Python function named 'play_silly_sound' that prints a message indicating a sound would play, as a placeholder for a very short, random sound effect (e.g., a 'boing' or 'ding-dong')."
+                
                 
                 # Simplified console visual effects: focus on basic text styling and colon animation
                 console_effects_prompt = "Python functions for console text styling. Include a function to apply a simple, noticeable text effect (e.g., bold, different color using ANSI escape codes, or a simple ASCII art border) to a given string, suitable for a digital display. Also, include a function to return a simple animated colon character (e.g., alternating between ':' and ' '). Do not use external libraries for complex font rendering or advanced GUI elements."
@@ -188,8 +188,6 @@ class TaskDecompositionEngine:
                 tasks.append(f'generate_code "{time_formatter_prompt}" "{project_name}/time_formatter.py"')
                 self.logger.debug(f"Generating Python (Message Generator) with prompt: '{message_generator_prompt}'")
                 tasks.append(f'generate_code "{message_generator_prompt}" "{project_name}/message_generator.py"')
-                self.logger.debug(f"Generating Python (Sound Effects) with prompt: '{sound_effects_prompt}'")
-                tasks.append(f'generate_code "{sound_effects_prompt}" "{project_name}/sound_effects.py"')
                 self.logger.debug(f"Generating Python (Console Effects) with prompt: '{console_effects_prompt}'")
                 tasks.append(f'generate_code "{console_effects_prompt}" "{project_name}/console_effects.py"')
                 self.logger.debug(f"Generating Python (Funny Clock Application) with prompt: '{funny_clock_app_prompt}'")
