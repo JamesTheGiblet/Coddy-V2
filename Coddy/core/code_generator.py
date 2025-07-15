@@ -1,8 +1,7 @@
-# C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\core\code_generator.py
-
 from __future__ import annotations # Enable postponed evaluation of type annotations
 import asyncio
 import os
+import ast # NEW: For validating Python code syntax
 import sys
 from typing import Dict, Any, Optional, List
 import json # Added for json.dumps in prompt formatting
@@ -58,23 +57,90 @@ class CodeGenerator:
         """
         await log_info("CodeGenerator initialized.") # Now correctly awaited
 
+    def _extract_code_from_markdown(self, content: str) -> str:
+        """
+        Extracts the first code block from a string that might contain markdown.
+        If no markdown code block is found, it returns the original content stripped.
+        This is useful because LLMs often wrap their code output in markdown blocks.
+        """
+        # Find the start of a code block
+        start_marker = content.find('```')
+        if start_marker == -1:
+            return content.strip()
+
+        # Find the end of the code block, starting after the initial marker
+        end_marker = content.find('```', start_marker + 3)
+        if end_marker == -1:
+            # If there's a start but no end, assume the rest is code
+            code_block = content[start_marker + 3:]
+        else:
+            # Extract the content within the block
+            code_block = content[start_marker + 3:end_marker]
+
+        # The first line might be the language hint (e.g., 'python').
+        # We remove it to get just the raw code.
+        first_newline = code_block.find('\n')
+        return code_block[first_newline + 1:].strip() if first_newline != -1 else code_block.strip()
+
+    def _is_valid_python_code(self, code: str) -> bool:
+        """
+        Checks if the given string is valid Python code by trying to parse it.
+        """
+        try:
+            ast.parse(code)
+            return True
+        except SyntaxError as e:
+            # Using log_debug for less noise, but indicating a syntax issue.
+            log_debug(f"Generated code has a syntax error: {e}")
+            return False
+
+    async def _generate_and_validate_code(self, initial_prompt: str, user_profile: Optional[Dict[str, Any]]) -> str:
+        """
+        Generates code, validates its syntax, and attempts to self-correct if needed.
+        """
+        # First attempt
+        raw_content = await self.idea_synthesizer.synthesize_idea(initial_prompt, user_profile=user_profile)
+        generated_code = self._extract_code_from_markdown(raw_content)
+
+        # If syntax is invalid, try to self-correct once.
+        if not self._is_valid_python_code(generated_code):
+            await log_warning("Initial code generation failed syntax check. Attempting to self-correct.")
+            correction_prompt = (
+                f"The following code has a syntax error. Please fix it and provide only the corrected, complete Python code.\n\n"
+                f"Faulty Code:\n```python\n{generated_code}\n```\n\n"
+                f"The corrected code should be a direct, runnable replacement, including all necessary imports and definitions."
+            )
+            raw_content = await self.idea_synthesizer.synthesize_idea(correction_prompt, user_profile=user_profile)
+            generated_code = self._extract_code_from_markdown(raw_content)
+
+            # Final check
+            if not self._is_valid_python_code(generated_code):
+                await log_error("Self-correction also failed syntax check. Returning faulty code.")
+
+        return generated_code
+
     async def generate_code(self, prompt: str, output_file: Optional[str] = None, 
                             context: Optional[Dict[str, Any]] = None, 
                             user_profile: Optional[Dict[str, Any]] = None) -> str:
         """
         Generates general code based on a prompt and optional context,
-        delegating personalization and logging to the IdeaSynthesizer.
-        If output_file is provided, saves the generated content to a timestamped folder.
+        validates it, and saves it if an output file is provided.
         """
         await log_info(f"Generating code for prompt: {prompt[:100]}...")
         
-        # Simplified prompt. IdeaSynthesizer will add personalization hints.
-        full_prompt = f"Generate code based on the following request: {prompt}"
+        # Add more explicit instructions to the prompt for better results.
+        full_prompt = (
+            f"Generate syntactically correct, complete, importable, and runnable Python code "
+            f"based on the following request: {prompt}. "
+            f"Include all necessary imports at the top of the file. "
+            f"Provide only the raw code, without any surrounding text or explanations, "
+            f"and without nested markdown blocks."
+        )
         if context:
             full_prompt += f"\n\nAdditional Context:\n{json.dumps(context, indent=2)}"
         
         try:
-            generated_content = await self.idea_synthesizer.synthesize_idea(full_prompt, user_profile=user_profile)
+            generated_content = await self._generate_and_validate_code(full_prompt, user_profile)
             await log_info("Code generation complete.")
 
             if output_file:
@@ -113,44 +179,6 @@ class CodeGenerator:
             await log_error(f"Error during code generation: {e}", exc_info=True)
             return f"# Error generating code: {e}"
 
-    async def generate_unit_tests(self, file_path: str, output_file: Optional[str] = None, 
-                                  context: Optional[Dict[str, Any]] = None,
-                                  user_profile: Optional[Dict[str, Any]] = None) -> str:
-        """
-        Generates unit tests for a given file, delegating personalization to IdeaSynthesizer.
-        If output_file is provided, saves the generated content to a timestamped folder.
-        """
-        await log_info(f"Generating unit tests for file: {file_path}")
-        
-        file_content = context.get("file_content", "No file content provided.")
-
-        prompt = (
-            f"Generate comprehensive unit tests for the following Python code from '{file_path}':\n\n"
-            f"{file_content}\n\n"
-            "Ensure the tests cover edge cases and common scenarios. Provide only the Python code for the tests."
-        )
-
-        try:
-            result = await self.idea_synthesizer.synthesize_idea(prompt, user_profile=user_profile)
-            await log_info("Unit test generation complete.")
-            
-            if output_file:
-                # Extract project_name and actual filename from output_file path
-                project_name = None
-                actual_filename = output_file
-                if os.sep in output_file:
-                    parts = output_file.split(os.sep)
-                    project_name = parts[0]
-                    actual_filename = os.sep.join(parts[1:])
-
-                await save_generated_file(result, actual_filename, "tests", project_name) # New category "tests"
-                await log_info(f"Generated unit tests saved to {output_file} under 'tests' for project '{project_name}'.")
-            
-            return result
-        except Exception as e:
-            await log_error(f"Error during unit test generation: {e}", exc_info=True)
-            return f"# Error generating unit tests: {e}"
-
     async def generate_code_fix(self, file_path: str, output_file: Optional[str] = None, 
                                 context: Optional[Dict[str, Any]] = None,
                                 user_profile: Optional[Dict[str, Any]] = None) -> str:
@@ -173,13 +201,13 @@ class CodeGenerator:
         if context.get("failed_test_output_stderr"):
             prompt += f"Test STDERR:\n{context.get('failed_test_output_stderr')}\n"
         
-        prompt += "Please provide a corrected version of ONLY the Python code that addresses the test failures. Do not include any explanations or markdown formatting outside the code block."
+        prompt += "Please provide a corrected, syntactically valid version of ONLY the Python code that addresses the test failures. Do not include any explanations or markdown formatting outside the code block."
 
         interaction_context_id = str(uuid.uuid4()) # Generate a unique ID for this interaction
 
         try:
-            # Pass user_profile to IdeaSynthesizer for deeper personalization
-            corrected_code = await self.idea_synthesizer.synthesize_idea(prompt, user_profile=user_profile)
+            # Use the new generation/validation helper
+            corrected_code = await self._generate_and_validate_code(prompt, user_profile)
             await log_info("Code fix generation complete.")
             
             if output_file:
@@ -209,4 +237,3 @@ class CodeGenerator:
                 }
                 await self.user_profile_manager.update_last_interaction_summary(summary)
             return corrected_code
- 

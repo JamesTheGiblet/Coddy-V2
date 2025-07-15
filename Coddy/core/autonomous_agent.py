@@ -39,6 +39,7 @@ class AutonomousAgent:
         self.task_decomposition_engine = TaskDecompositionEngine(llm_provider=self.code_generator.llm_provider) # Agent owns its decomposition engine
         self.current_user_id = current_user_id
         self.current_session_id = current_session_id
+        self.last_generated_code: Optional[str] = None # NEW: State to hold recently generated code
 
     async def _display_message(self, message: str, message_type: str = "info"):
         """
@@ -74,6 +75,9 @@ class AutonomousAgent:
             True if the task is completed successfully, False otherwise.
         """
         await self._display_message(f"Agent received high-level instruction: '{high_level_instruction}'", "info")
+        
+        # Reset state for the new task execution
+        self.last_generated_code = None
         
         # 1. Store the initial instruction in memory
         await self.memory_service.store_memory(
@@ -126,12 +130,41 @@ class AutonomousAgent:
 
             if command_name == "read":
                 if subtask_args:
-                    subtask_status = await self.execution_manager.read_file_api(subtask_args[0]) is not None
+                    file_path_to_read = subtask_args[0]
+                    # Try to read the file first.
+                    content = await self.execution_manager.read_file_api(file_path_to_read)
+                    if content is not None:
+                        subtask_status = True
+                    # If read fails (e.g., 404 Not Found) and we have code in memory,
+                    # it's likely the plan missed a 'write' step. Let's fix that.
+                    elif self.last_generated_code:
+                        await self._display_message(f"Read failed for '{file_path_to_read}'. Attempting to write from memory before retrying.", "debug")
+                        # Write the file from memory
+                        write_success = await self.execution_manager.write_file_api(file_path_to_read, self.last_generated_code)
+                        if write_success:
+                            self.last_generated_code = None # Consume the code
+                            # Retry the read. If it succeeds now, the subtask is successful.
+                            subtask_status = await self.execution_manager.read_file_api(file_path_to_read) is not None
+                        else:
+                            # The write operation itself failed.
+                            subtask_status = False
+                    else:
+                        # The read failed and there's no code in memory to help.
+                        subtask_status = False
                 else:
                     await self._display_message("Subtask 'read' requires a file path.", "warning")
             elif command_name == "write":
                 if len(subtask_args) >= 2:
-                    subtask_status = await self.execution_manager.write_file_api(subtask_args[0], " ".join(subtask_args[1:]))
+                    file_path = subtask_args[0]
+                    content = " ".join(subtask_args[1:])
+                    
+                    # NEW: Check for placeholder content and use in-memory code if available
+                    if "Here is the code from the previous step" in content and self.last_generated_code:
+                        await self._display_message(f"Detected placeholder. Using recently generated code for '{file_path}'.", "debug")
+                        content = self.last_generated_code
+                        self.last_generated_code = None # Consume the code so it's not used again
+                        
+                    subtask_status = await self.execution_manager.write_file_api(file_path, content)
                 else:
                     await self._display_message("Subtask 'write' requires a file path and content.", "warning")
             elif command_name == "list":
@@ -150,22 +183,47 @@ class AutonomousAgent:
                     )
                 else:
                     await self._display_message("Subtask 'unit_tester' requires a file path.", "warning")
-            elif command_name == "generate_code": # Example custom agent command
-                if subtask_args:
-                    # This would involve the code_generator directly
-                    await self._display_message(f"Agent attempting to generate code for: {subtask_args[0]}", "info")
-                    # You'd need a specific method in code_generator for this, e.g., generate_feature_code
-                    # For now, just a placeholder.
-                    # generated_code = await self.code_generator.generate_feature_code(subtask_args[0], self.vibe_engine.get_current_vibe(), self.memory_service.retrieve_context(...))
-                    # if generated_code:
-                    #    await self.execution_manager.write_file_api("generated_feature.py", generated_code)
-                    #    subtask_status = True
-                    # else:
-                    #    subtask_status = False
-                    await self._display_message("Code generation subtask is a placeholder. Needs implementation.", "warning")
-                    subtask_status = False # Mark as failed until implemented
+            elif command_name == "generate_code":
+                if len(subtask_args) >= 1: # Can now be called with just a prompt
+                    prompt = subtask_args[0]
+                    # Handle optional output file
+                    output_file = subtask_args[1] if len(subtask_args) >= 2 else None
+
+                    if output_file:
+                        await self._display_message(f"Generating code with prompt: '{prompt}' and saving to '{output_file}'...", "info")
+                    else:
+                        await self._display_message(f"Generating code with prompt: '{prompt}' (in-memory)...", "info")
+
+                    # Re-initialize user profile manager for this specific task to get fresh data
+                    user_profile_manager = UserProfile(session_id=self.current_session_id, user_id=self.current_user_id, memory_service=self.memory_service)
+                    await user_profile_manager.initialize()
+                    user_profile_data = user_profile_manager.profile.model_dump() if user_profile_manager.profile else {}
+
+                    generated_code = await self.code_generator.generate_code(
+                        prompt=prompt,
+                        output_file=output_file, # Will be None if not provided
+                        user_profile=user_profile_data
+                    )
+                    
+                    if generated_code and not generated_code.startswith("# Error"):
+                        if output_file:
+                            await self._display_message(f"Code generated and saved to '{output_file}'.", "success")
+                            # Store the generated content in memory for potential use by subsequent subtasks
+                            await self.memory_service.store_memory(
+                                content={"type": "generated_code", "file_path": output_file, "content": generated_code},
+                                tags=["agent_task", "code_generation", "file_content"]
+                            )
+                        else:
+                            # NEW: Store in agent's state if no output file
+                            self.last_generated_code = generated_code
+                            await self._display_message("Code generated and stored in memory for the next step.", "success")
+                        
+                        subtask_status = True
+                    else:
+                        await self._display_message(f"Code generation failed for prompt: '{prompt}'.", "error")
+                        subtask_status = False
                 else:
-                    await self._display_message("Subtask 'generate_code' requires a description.", "warning")
+                    await self._display_message("Subtask 'generate_code' requires at least a prompt.", "warning")
             else:
                 await self._display_message(f"Agent does not know how to handle subtask command: '{command_name}'.", "error")
                 subtask_status = False # Mark as failure
