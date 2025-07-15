@@ -11,8 +11,6 @@
       "Other"
     ],
     "activationEvents": [
-      "onCommand:coddy.helloWorld",
-      "onCommand:coddy.readFile"
     ],
     "main": "./extension.js",
     "contributes": {
@@ -25,7 +23,17 @@
           "command": "coddy.readFile",
           "title": "Coddy: Read File"
         }
-      ]
+      ],
+      "configuration": {
+        "title": "Coddy Extension Configuration",
+        "properties": {
+          "coddy.backendUrl": {
+            "type": "string",
+            "default": "http://127.0.0.1:8000",
+            "description": "The base URL for the Coddy FastAPI backend (e.g., http://localhost:8000 or your deployed URL)."
+          }
+        }
+      }
     },
     "scripts": {
       "lint": "eslint .",
@@ -43,4 +51,3 @@
       "@vscode/test-electron": "^2.3.2"
     }
   }
-  

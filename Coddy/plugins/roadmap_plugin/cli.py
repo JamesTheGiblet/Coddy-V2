@@ -1,4 +1,4 @@
-# C:\Users\gilbe\Documents\GitHub\Coddy V2\Coddy\plugins\roadmap_plugin\cli.py
+# C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\plugins\roadmap_plugin\cli.py
 
 import asyncio
 
@@ -7,8 +7,9 @@ import httpx
 from rich.console import Console
 from rich.markdown import Markdown
 
-API_BASE_URL = "http://127.0.0.1:8000"
+from Coddy.core.config import API_BASE_URL # MODIFIED: Import API_BASE_URL from config.py
 
+# REMOVED: API_BASE_URL = "http://127.0.0.1:8000"
 
 async def fetch_and_print_roadmap():
     """Fetches roadmap from the API and prints it to the console."""
@@ -16,7 +17,7 @@ async def fetch_and_print_roadmap():
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(f"{API_BASE_URL}/api/roadmap")
-            response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
+            response.raise_for_status()   # Raise an exception for bad status codes (4xx or 5xx)
             data = response.json()
             content = data.get("content", "No roadmap content found.")
             markdown = Markdown(content)

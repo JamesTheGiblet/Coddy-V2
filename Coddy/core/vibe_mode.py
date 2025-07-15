@@ -6,6 +6,10 @@ import os
 import time
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
+import json
+
+from code_generator import CodeGenerator
+from user_profile import UserProfile # NEW: Import json
 
 # Add Coddy/core to the Python path for importing MemoryService
 # Corrected import path for VibeFileManager from the 'vibe' package
@@ -17,6 +21,7 @@ try:
     from memory_service import MemoryService
     from utility_functions import list_files # To track open files/directory changes
     from vibe.vibe_file_manager import VibeFileManager # Corrected import from 'vibe' package
+    from backend.services import services # NEW: Import the centralized services dictionary
 except ImportError as e:
     print(f"Error importing core modules for VibeModeEngine: {e}")
     print("Please ensure 'memory_service.py', 'utility_functions.py' (in core), and 'vibe/vibe_file_manager.py' exist and are correctly configured.")
@@ -195,28 +200,112 @@ class VibeModeEngine:
         Suggests a next task based on current vibe, recent activities, and roadmap.
         (Requires RoadmapManager integration for real suggestions)
         """
-        print("VibeModeEngine: Suggesting next task...")
-        # For simplicity, suggest the next pending task from Phase 2
-        # In a real scenario, this would use PatternOracle, file context, LLM, etc.
-        try:
-            # We need the actual roadmap_manager instance passed correctly, not just a mock
-            # If roadmap_manager is not initialized (e.g. from cli), it might fail.
-            pending_tasks = await roadmap_manager.get_current_tasks(status="pending", phase_number=2)
-            if pending_tasks:
-                # Find the very first pending task in Phase 2 for a simple suggestion
-                # Sort by phase number and then by their original order in the roadmap
-                pending_tasks.sort(key=lambda t: (t['phase_number'], t.get('order_in_phase', 0))) # Assuming 'order_in_phase' can be added in roadmap_manager if needed
-                first_pending_task = pending_tasks[0] # Simply take the first one after sorting
+        print("VibeModeEngine: Suggesting next task (leveraging LLM for intelligence)...") # MODIFIED: Updated log
+        
+        llm_provider = services.get("llm_provider")
+        code_generator = services.get("code_generator") # Can use code_generator for its LLM capabilities
+        user_profile_manager = services.get("user_profile_manager")
+        # pattern_oracle = services.get("pattern_oracle") # Optionally integrate PatternOracle
 
-                return {
-                    "suggestion": f"Consider working on: '{first_pending_task['description']}' (Phase {first_pending_task['phase_number']})",
-                    "task_details": first_pending_task
-                }
+        if not llm_provider or not code_generator or not user_profile_manager:
+            print("VibeModeEngine: LLM services not available for advanced task suggestion. Falling back to basic roadmap check.")
+            # Fallback to existing simple logic if LLM services are not available
+            try:
+                # Assuming roadmap_manager has get_current_tasks and it returns structured data
+                pending_tasks = await roadmap_manager.get_current_tasks(status="pending") # Get all pending tasks
+                if pending_tasks:
+                    # Prioritize by phase number, then by an assumed order within the phase (or just take first)
+                    pending_tasks.sort(key=lambda t: (t.get('phase_number', 999), t.get('order_in_phase', 0)))
+                    first_pending_task = pending_tasks[0]
+                    return {
+                        "suggestion": f"Consider working on: '{first_pending_task.get('description', 'No description')}' (Phase {first_pending_task.get('phase', 'N/A')})",
+                        "task_details": first_pending_task
+                    }
+                else:
+                    return {"suggestion": "All known tasks are complete or no pending tasks found. What's next?"}
+            except Exception as e:
+                print(f"VibeModeEngine: Error suggesting task (basic fallback): {e}")
+                import traceback
+                traceback.print_exc()
+                return {"suggestion": f"Unable to suggest a task due to a basic error: {e}"}
+
+        try:
+            # 1. Gather current vibe data
+            current_vibe = self.get_current_vibe()
+            
+            # 2. Get relevant roadmap tasks (all pending, for LLM to prioritize)
+            # Assuming roadmap_manager.get_current_tasks can fetch all pending tasks
+            all_pending_roadmap_tasks = await roadmap_manager.get_current_tasks(status="pending") 
+            
+            # 3. Get recent memories for deeper context
+            recent_memories = await self.memory_service.retrieve_context(num_recent=10, query={"user_id": self.user_id})
+
+            # 4. Construct a comprehensive prompt for the LLM
+            # Include relevant details from current vibe, roadmap, and memories
+            prompt_context = f"""
+            You are Coddy, an AI development partner. Your goal is to suggest the single most logical next task for the user based on their current context and project roadmap.
+
+            Here is the user's current working "vibe" and environment details:
+            - Current Focus: {current_vibe.get('current_focus', 'Not set')}
+            - Last Activity At: {current_vibe.get('last_activity_at', 'N/A')}
+            - Recent Commands: {json.dumps(current_vibe.get('recent_commands', []), indent=2)}
+            - Tracked Files (recently accessed): {json.dumps(current_vibe.get('tracked_files', {}), indent=2)}
+            - Current Directory: {current_vibe.get('current_directory', 'N/A')}
+
+            Here are the current pending tasks from the project roadmap:
+            {json.dumps(all_pending_roadmap_tasks, indent=2)}
+
+            Here are some recent interactions and memories for additional context:
+            {json.dumps(recent_memories, indent=2)}
+
+            Based on this information, propose the single best next task.
+            Consider the user's recent activity, current focus, and the project roadmap.
+            If a roadmap task is highly relevant, suggest that. If recent activities point to an emerging task not yet on the roadmap, suggest that.
+            Prioritize tasks that seem to be a natural continuation of the current work or critical next steps in the roadmap.
+
+            Format your response as a JSON object with two fields:
+            1. 'suggestion': A concise string explaining the suggested task (e.g., "Implement the user login functionality as per Phase X roadmap.").
+            2. 'task_details': An object containing details about the suggested task. If it's a roadmap task, include its 'phase', 'goal', 'description', etc. If it's a newly suggested task, provide relevant details.
+
+            Example of expected JSON output:
+            {{
+              "suggestion": "Implement the user login functionality as per Phase 17 roadmap.",
+              "task_details": {{
+                "phase": "Phase 17",
+                "goal": "Establish Skill System",
+                "description": "Implement Dynamic Skill Invocation"
+              }}
+            }}
+            If no clear task emerges, suggest a reflective action or general next step, and provide empty task_details.
+            """
+            
+            # Use the LLM via CodeGenerator's generate_code (or a specific idea synthesis method)
+            # CodeGenerator.generate_code can be adapted for general text generation if the prompt is structured.
+            llm_response = await code_generator.generate_code(
+                prompt=prompt_context,
+                context={}, # Additional context can be passed here if needed by CodeGenerator
+                user_profile=user_profile_manager.profile.model_dump() if user_profile_manager and user_profile_manager.profile else {}
+            )
+            
+            # Attempt to parse the LLM's JSON response
+            # Assuming LLM response is in 'code' field and is a JSON string
+            response_text = llm_response.get("code", "{}")
+            try:
+                parsed_response = json.loads(response_text)
+            except json.JSONDecodeError:
+                print(f"VibeModeEngine: LLM returned invalid JSON: {response_text[:200]}...")
+                return {"suggestion": f"LLM struggled to generate a structured suggestion. Raw response: {response_text[:100]}..."}
+            
+            if parsed_response and "suggestion" in parsed_response:
+                return parsed_response
             else:
-                return {"suggestion": "All known tasks are complete or no pending tasks found in Phase 2. What's next?"}
+                return {"suggestion": "Unable to get a clear task suggestion from LLM. What's on your mind?", "task_details": {}}
+
         except Exception as e:
-            print(f"VibeModeEngine: Error suggesting task: {e}")
-            return {"suggestion": f"Unable to suggest a task due to an error: {e}"}
+            print(f"VibeModeEngine: Error suggesting task (LLM integration): {e}")
+            import traceback
+            traceback.print_exc()
+            return {"suggestion": f"Unable to suggest a task due to an advanced error: {e}"}
 
     async def save_vibe_to_file(self, snapshot_name: str, current_todos: Optional[List[str]] = None) -> bool:
         """
@@ -355,7 +444,7 @@ async def main_test_vibe_mode_engine():
         print("Load from file test failed.")
 
     # --- Clean up test files (optional, but good for isolated testing) ---
-    vibe_file_manager_for_cleanup = VibeFileManager(vibe_dir=vibe_engine.vibe_file_manager.VIBE_DATA_DIR) # Use VIBE_DATA_DIR
+    vibe_file_manager_for_cleanup = VibeModeEngine(vibe_dir=vibe_engine.vibe_file_manager.VIBE_DATA_DIR) # Use VIBE_DATA_DIR
     snapshots_to_remove = await vibe_file_manager_for_cleanup.list_vibe_snapshots()
     for s_name in snapshots_to_remove:
         file_path = os.path.join(vibe_file_manager_for_cleanup.VIBE_DATA_DIR, f"{s_name}.vibe")
@@ -363,13 +452,99 @@ async def main_test_vibe_mode_engine():
             os.remove(file_path)
             print(f"Cleaned up local .vibe file: {file_path}")
 
-    print("\n--- End of VibeModeEngine with VibeFileManager Integration Tests ---")
+    # --- Test task suggestion (will try to use LLM now) ---
+    print("\n--- Test Task Suggestion with LLM Integration ---")
+    # To properly test this, ensure your backend with LLM services is running.
+    # We will pass a mock roadmap_manager for this test.
+    class MockRoadmapManager:
+        async def get_current_tasks(self, status: Optional[str] = None, phase_number: Optional[int] = None):
+            # Return some mock roadmap content
+            # This should mimic the structure returned by roadmap_manager.get_current_tasks
+            tasks = [
+                {"phase": "Phase 17", "phase_number": 17, "description": "Design Skill Framework", "status": "pending"},
+                {"phase": "Phase 17", "phase_number": 17, "description": "Implement Dynamic Skill Invocation", "status": "pending"},
+                {"phase": "Phase 18", "phase_number": 18, "description": "Redesign Dashboard for Vibe Coding", "status": "pending"},
+                {"phase": "Phase 26", "phase_number": 26, "description": "Implement Duplicate Code Detection", "status": "pending"}
+            ]
+            if status:
+                tasks = [t for t in tasks if t['status'] == status]
+            if phase_number:
+                tasks = [t for t in tasks if t['phase_number'] == phase_number]
+            return tasks
+
+        async def get_roadmap_content_as_list(self): # Added for the LLM prompt's context
+            return await self.get_current_tasks() # Return all mock tasks
+
+    mock_roadmap_manager = MockRoadmapManager()
+    
+    # Temporarily set up minimal services for testing LLM path in vibe_mode.
+    # In a real scenario, these would be initialized by backend/main.py.
+    # For a standalone test, we need to mock or provide minimal versions.
+    
+    # Ensure necessary services are in the global 'services' dict for this test
+    # This might require a more sophisticated test setup (e.g., pytest fixtures)
+    # but for a quick direct test of this file's main function, we can add simple mocks.
+    # Defining MockLLMProvider and CodeGenerator imports here just for the test block.
+    # from core.llm_provider import MockLLMProvider # Need to ensure this mock exists or create one
+    # from core.code_generator import CodeGenerator # This class needs its actual dependencies
+    # from core.user_profile import UserProfile # This class needs MemoryService
+
+
+    # Simple MockLLMProvider for isolated testing if not already available
+    class MockLLMProvider:
+        def __init__(self, model_name="mock-llm"):
+            self.model_name = model_name
+        async def generate_text(self, prompt: str, **kwargs) -> str:
+            # Simulate LLM returning a JSON string
+            if "Refactor the authentication module" in prompt:
+                return json.dumps({"suggestion": "Refactor authentication for improved security.", "task_details": {"phase": "Phase 17", "description": "Implement Secure API Key Management"}})
+            elif "Implement Dynamic Skill Invocation" in prompt:
+                return json.dumps({"suggestion": "Focus on implementing dynamic skill invocation within the agent.", "task_details": {"phase": "Phase 17", "description": "Implement Dynamic Skill Invocation"}})
+            else:
+                return json.dumps({"suggestion": "Review recent activity and prioritize a task from the roadmap or a new emerging need.", "task_details": {}})
+                
+    # Re-initialize services for this specific test case, ensuring mocks are used
+    # This part is highly specific to how tests are run. In a real app, backend/main.py would handle this.
+    # For a direct run of this script's main, we define them here.
+    _temp_memory_service = MemoryService(session_id="test_llm_session_temp", user_id="test_llm_user_temp")
+    _temp_user_profile_manager = UserProfile(session_id="test_llm_session_temp", user_id="test_llm_user_temp", memory_service=_temp_memory_service)
+    await _temp_user_profile_manager.initialize() # Initialize user profile
+
+    _temp_llm_provider = MockLLMProvider()
+    _temp_code_generator = CodeGenerator(
+        llm_provider=_temp_llm_provider,
+        memory_service=_temp_memory_service,
+        vibe_engine=vibe_engine, # Pass the actual vibe_engine instance
+        user_profile_manager=_temp_user_profile_manager
+    )
+    
+    # Manually populate services dict for this test context if it's empty
+    services['memory_service'] = _temp_memory_service
+    services['llm_provider'] = _temp_llm_provider
+    services['user_profile_manager'] = _temp_user_profile_manager
+    services['code_generator'] = _temp_code_generator
+    services['vibe_engine'] = vibe_engine # Ensure vibe_engine itself is accessible if it's used by other services
+
+    suggested_task = await vibe_engine.suggest_next_task(mock_roadmap_manager)
+    print(f"\nSuggested Task (LLM-integrated): {suggested_task}")
+    
+    # Expected output structure: {"suggestion": "...", "task_details": {}}
+    assert "suggestion" in suggested_task
+    # Add more specific assertions based on expected LLM behavior and mock data
+    assert "Implement Dynamic Skill Invocation" in suggested_task["suggestion"] or \
+           "Refactor authentication for improved security." in suggested_task["suggestion"] or \
+           "Review recent activity" in suggested_task["suggestion"]
+
+    # Clean up temporary services (they are mostly mocks, but good practice)
+    await _temp_memory_service.close()
+    
+    print("\n--- End of VibeModeEngine with LLM Suggestion Tests ---")
+
 
 if __name__ == "__main__":
     # To run this example:
     # 1. Ensure your Node.js backend is running (npm start in Coddy/backend).
     # 2. Ensure `aiohttp` is installed: `pip install aiohttp`.
-    # 3. Ensure `memory_service.py`, `utility_functions.py` in Coddy/core.
-    # 4. Ensure `vibe_file_manager.py` in Coddy/vibe (now a package).
-    # 5. Run this script: `python Coddy/core/vibe_mode.py`
+    # 3. Ensure `memory_service.py`, `utility_functions.py` (in core), and `vibe/vibe_file_manager.py` exist and are correctly configured.
+    # 4. Run this script: `python Coddy/core/vibe_mode.py`
     asyncio.run(main_test_vibe_mode_engine())

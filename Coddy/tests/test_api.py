@@ -1,9 +1,11 @@
+# C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\tests\test_api.py
+
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import patch, AsyncMock
 
 # The 'app' object from your FastAPI application
-from api.main import app
+from backend.main import app
 
 client = TestClient(app)
 

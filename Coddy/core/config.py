@@ -2,13 +2,14 @@
 """
 Central configuration for Coddy services.
 """
+import os
 
 # The base URL for the FastAPI backend which handles memory, file operations, etc.
-API_BASE_URL = "http://127.0.0.1:8000"
-
-# The URL for the WebSocket server for real-time UI updates.
-WEBSOCKET_URL = "ws://localhost:8080"
+API_BASE_URL = os.getenv("CODDY_API_URL", "http://127.0.0.1:8000")
 
 # WebSocket server configuration
-WEBSOCKET_HOST = "localhost"
-WEBSOCKET_PORT = 8080
+WEBSOCKET_HOST = os.getenv("CODDY_WEBSOCKET_HOST", "localhost")
+WEBSOCKET_PORT = int(os.getenv("CODDY_WEBSOCKET_PORT", 8080))
+
+# The URL for the WebSocket server for real-time UI updates.
+WEBSOCKET_URL = f"ws://{WEBSOCKET_HOST}:{WEBSOCKET_PORT}"

@@ -101,14 +101,16 @@ class GitStatusResponse(BaseModel):
 
 
 # --- Lifespan Management (Modern Approach) ---
-DEFAULT_USER_ID = "api_user"
-DEFAULT_SESSION_ID = "api_session_default"
+# MODIFIED: Get DEFAULT_USER_ID and DEFAULT_SESSION_ID from environment variables
+DEFAULT_USER_ID = os.getenv("CODDY_DEFAULT_USER_ID", "api_user")
+DEFAULT_SESSION_ID = os.getenv("CODDY_DEFAULT_SESSION_ID", "api_session_default")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initializes core services when the FastAPI application starts."""
-    LLM_MODEL_NAME = "gemini-1.5-flash-latest"
-    LLM_PROVIDER_TYPE = "gemini"
+    # MODIFIED: Get LLM configuration from environment variables (or config.py if it were moved there)
+    LLM_MODEL_NAME = os.getenv("CODDY_LLM_MODEL_NAME", "gemini-1.5-flash-latest")
+    LLM_PROVIDER_TYPE = os.getenv("CODDY_LLM_PROVIDER_TYPE", "gemini")
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") # NEW: Get API key from environment
 
     await log_info("Coddy Backend API: Initializing core services...")
@@ -438,6 +440,13 @@ app.include_router(api_router)
 
 if __name__ == "__main__":
     import uvicorn
-    print("Starting Coddy Backend API server...")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # REPLACED: print("Starting Coddy Backend API server...")
+    # REPLACED: uvicorn.run(app, host="0.0.0.0", port=8000)
+    # REPLACED: print("Coddy Backend API server started.")
+    print(f"Starting Coddy Backend API server on http://{os.getenv('CODDY_API_HOST', '0.0.0.0')}:{os.getenv('CODDY_API_PORT', '8000')}")
+    uvicorn.run(
+        app,
+        host=os.getenv("CODDY_API_HOST", "0.0.0.0"),
+        port=int(os.getenv("CODDY_API_PORT", 8000))
+    )
     print("Coddy Backend API server started.")

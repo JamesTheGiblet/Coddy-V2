@@ -1,30 +1,31 @@
-# C:\Users\gilbe\Documents\GitHub\Coddy V2\Coddy\dashboard_api.py
+# C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\dashboard_api.py
 
 import httpx
 import json
 from typing import Dict, Any, Optional, List
 
-# Base URL for your Coddy backend API
-API_BASE_URL = "http://127.0.0.1:8000/api"
+from Coddy.core.config import API_BASE_URL # MODIFIED: Import API_BASE_URL from config.py
+
+# REMOVED: API_BASE_URL = "http://127.0.0.1:8000/api"
 
 async def get_roadmap():
     """Fetches the project roadmap from the Coddy API."""
     async with httpx.AsyncClient() as client:
-        response = await client.get(f"{API_BASE_URL}/roadmap")
-        response.raise_for_status()  # Raise an exception for bad status codes
+        response = await client.get(f"{API_BASE_URL}/api/roadmap") # MODIFIED: Use imported API_BASE_URL
+        response.raise_for_status()   # Raise an exception for bad status codes
         return response.json().get("content", "No roadmap available.")
 
 async def list_files(path: str = "."):
     """Lists files and directories at a given path via the Coddy API."""
     async with httpx.AsyncClient() as client:
-        response = await client.get(f"{API_BASE_URL}/files/list", params={"path": path})
+        response = await client.get(f"{API_BASE_URL}/api/files/list", params={"path": path}) # MODIFIED
         response.raise_for_status()
         return response.json().get("items", [])
 
 async def read_file(path: str):
     """Reads the content of a file via the Coddy API."""
     async with httpx.AsyncClient() as client:
-        response = await client.get(f"{API_BASE_URL}/files/read", params={"path": path})
+        response = await client.get(f"{API_BASE_URL}/api/files/read", params={"path": path}) # MODIFIED
         response.raise_for_status()
         return response.json().get("content", "")
 
@@ -32,7 +33,7 @@ async def write_file(path: str, content: str):
     """Writes content to a file via the Coddy API."""
     async with httpx.AsyncClient() as client:
         response = await client.post(
-            f"{API_BASE_URL}/files/write",
+            f"{API_BASE_URL}/api/files/write", # MODIFIED
             json={"path": path, "content": content}
         )
         response.raise_for_status()
@@ -49,7 +50,7 @@ async def decompose_task(instruction: str, user_profile: Optional[Dict[str, Any]
             payload["user_profile"] = user_profile # Include user profile in the request
         
         response = await client.post(
-            f"{API_BASE_URL}/tasks/decompose",
+            f"{API_BASE_URL}/api/tasks/decompose", # MODIFIED
             json=payload,
             timeout=60.0  # Allow up to 60 seconds for LLM-based decomposition
         )
@@ -69,7 +70,7 @@ async def generate_code(prompt: str, context: Optional[Dict[str, Any]] = None, u
             payload["user_profile"] = user_profile # Include user profile in the request
         
         response = await client.post(
-            f"{API_BASE_URL}/code/generate",
+            f"{API_BASE_URL}/api/code/generate", # MODIFIED
             json=payload,
             timeout=120.0 # Allow up to 120 seconds for potentially complex code generation
         )
@@ -88,7 +89,7 @@ async def refactor_code(file_path: str, original_code: str, instructions: str, u
             payload["user_profile"] = user_profile
         
         response = await client.post(
-            f"{API_BASE_URL}/code/refactor",
+            f"{API_BASE_URL}/api/code/refactor", # MODIFIED
             json=payload,
             timeout=120.0  # Allow longer timeout for potentially complex refactoring
         )
@@ -103,7 +104,7 @@ async def generate_changelog(output_file: str, user_profile: Optional[Dict[str, 
             payload["user_profile"] = user_profile
         
         response = await client.post(
-            f"{API_BASE_URL}/automation/generate_changelog",
+            f"{API_BASE_URL}/api/automation/generate_changelog", # MODIFIED
             json=payload,
             timeout=120.0 # Allow longer timeout for changelog generation
         )
@@ -121,7 +122,7 @@ async def generate_todo_stubs(scan_path: str, output_file: str, user_profile: Op
             payload["user_profile"] = user_profile
         
         response = await client.post(
-            f"{API_BASE_URL}/automation/generate_todo_stubs",
+            f"{API_BASE_URL}/api/automation/generate_todo_stubs", # MODIFIED
             json=payload,
             timeout=180.0 # Allow even longer for scanning multiple files
         )
@@ -132,9 +133,9 @@ async def execute_shell_command(command: str) -> Dict[str, Any]:
     """Executes a shell command via the Coddy API."""
     async with httpx.AsyncClient() as client:
         response = await client.post(
-            f"{API_BASE_URL}/shell/exec",
+            f"{API_BASE_URL}/api/shell/exec", # MODIFIED
             json={"command": command},
-            timeout=300.0  # Allow up to 5 minutes for long-running commands
+            timeout=300.0   # Allow up to 5 minutes for long-running commands
         )
         response.raise_for_status()
         return response.json()
@@ -142,7 +143,7 @@ async def execute_shell_command(command: str) -> Dict[str, Any]:
 async def get_user_profile() -> Dict[str, Any]:
     """Fetches the current user profile from the Coddy API."""
     async with httpx.AsyncClient() as client:
-        response = await client.get(f"{API_BASE_URL}/profile")
+        response = await client.get(f"{API_BASE_URL}/api/profile") # MODIFIED
         response.raise_for_status()
         return response.json()
 
@@ -150,7 +151,7 @@ async def set_user_profile(profile_data: Dict[str, Any]) -> Dict[str, Any]:
     """Updates the user profile via the Coddy API."""
     async with httpx.AsyncClient() as client:
         response = await client.post(
-            f"{API_BASE_URL}/profile/set",
+            f"{API_BASE_URL}/api/profile/set", # MODIFIED
             json={"profile_data": profile_data}
         )
         response.raise_for_status()
@@ -159,7 +160,7 @@ async def set_user_profile(profile_data: Dict[str, Any]) -> Dict[str, Any]:
 async def clear_user_profile() -> Dict[str, Any]:
     """Resets the user profile to default via the Coddy API."""
     async with httpx.AsyncClient() as client:
-        response = await client.post(f"{API_BASE_URL}/profile/clear")
+        response = await client.post(f"{API_BASE_URL}/api/profile/clear") # MODIFIED
         response.raise_for_status()
         return response.json()
 
@@ -173,7 +174,7 @@ async def add_feedback(rating: int, comment: Optional[str] = None, context_id: O
             payload["context_id"] = context_id
         
         response = await client.post(
-            f"{API_BASE_URL}/feedback/add",
+            f"{API_BASE_URL}/api/feedback/add", # MODIFIED
             json=payload
         )
         response.raise_for_status()

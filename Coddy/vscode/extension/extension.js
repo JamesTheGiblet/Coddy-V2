@@ -35,7 +35,9 @@ function activate(context) {
 
     // Command: Coddy: Read File
     let readFileDisposable = vscode.commands.registerCommand('coddy.readFile', async () => {
-        const API_BASE_URL = 'http://127.0.0.1:8000'; // Your Coddy FastAPI backend URL
+        // MODIFIED: Get API_BASE_URL from VS Code configuration
+        const config = vscode.workspace.getConfiguration('coddy');
+        const API_BASE_URL = config.get('backendUrl', 'http://127.0.0.1:8000'); // Default fallback
 
         // Prompt the user for a file path
         const filePath = await vscode.window.showInputBox({

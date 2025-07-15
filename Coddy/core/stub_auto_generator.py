@@ -14,11 +14,12 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.
 
 try:
     from Coddy.core.logging_utility import log_info, log_warning, log_error, log_debug
-    from Coddy.core.utility_functions import read_file, write_file # Use utility_functions for file I/O
+    from Coddy.core.utility_functions import read_file, write_file, list_files_in_directory_recursive # Use utility_functions for file I/O
     # Using 'Any' for type hints in __init__ to avoid 'Variable not allowed in type expression' error.
     # Ideally, direct class names would work with 'from __future__ import annotations'.
     from Coddy.core.code_generator import CodeGenerator as AnyCodeGenerator # Alias to avoid direct type hint conflict
     from Coddy.core.user_profile import UserProfile as AnyUserProfile # Alias to avoid direct type hint conflict
+    from backend.services import services # NEW: Import services for better LLM integration if needed
 except ImportError as e:
     print(f"FATAL ERROR: Could not import core modules for StubAutoGenerator: {e}", file=sys.stderr)
     # Set UserProfile and CodeGenerator to None if import fails to prevent NameError,
@@ -48,6 +49,10 @@ class StubAutoGenerator:
     PASS_OR_ELLIPSIS_PATTERN = re.compile(
         r"^(?P<indent>\s*)(?:pass|\.{3})\s*(#.*)?$", re.MULTILINE
     )
+    
+    # NEW: Regex to extract content from a markdown code block
+    MARKDOWN_CODE_BLOCK_PATTERN = re.compile(r"```python\n(.*?)\n```", re.DOTALL)
+
 
     # Using 'Any' for type hints in __init__ to avoid 'Variable not allowed in type expression' error.
     # Ideally, direct class names would work with 'from __future__ import annotations'.
@@ -88,23 +93,26 @@ class StubAutoGenerator:
         ```
         Function signature to stub: `{func_signature}`
 
-        Provide only the code for the stub, including indentation. Do not include any explanations outside the code.
+        Provide only the code for the stub, including indentation.
+        Wrap the generated code ONLY within a markdown Python code block (```python...```).
+        Do not include any explanations or extra text outside the code block.
         """
         try:
             # Use CodeGenerator to get LLM-generated stub
-            llm_generated_stub = await self.code_generator.generate_code(
+            llm_generated_output = await self.code_generator.generate_code(
                 prompt=prompt,
                 context={"function_signature": func_signature, "file_content_context": current_file_content},
                 user_profile=user_profile # Pass user profile for personalization
             )
-            # The LLM might return more than just the stub, try to extract just the relevant part
-            # This is a heuristic and might need refinement based on LLM behavior
-            stub_lines = [line for line in llm_generated_stub.splitlines() if line.strip() and not line.strip().startswith('# Error')]
-            if stub_lines:
-                # Assuming the first non-comment line is the start of the stub body
-                # We need to ensure it's properly indented relative to the function def.
-                # For now, we'll just return the raw LLM output, hoping it's well-formatted.
-                return "\n".join(stub_lines)
+            
+            # MODIFIED: Extract code from markdown block
+            response_text = llm_generated_output.get("code", "")
+            match = self.MARKDOWN_CODE_BLOCK_PATTERN.search(response_text)
+            if match:
+                llm_stub = match.group(1).strip()
+                return llm_stub
+            
+            await log_warning(f"LLM generated stub for '{func_signature}' did not contain expected markdown code block.")
             return "" # Return empty if LLM didn't produce a useful stub
         except Exception as e:
             await log_error(f"Error generating LLM stub for '{func_signature}': {e}")
@@ -157,7 +165,7 @@ class StubAutoGenerator:
                         # Ensure the LLM stub is correctly indented relative to the function definition
                         llm_stub_lines = llm_stub.splitlines()
                         # Adjust indentation of LLM stub to match the function's expected body indentation
-                        adjusted_llm_stub_lines = [indent + "    " + l.lstrip() for l in llm_stub_lines]
+                        adjusted_llm_stub_lines = [indent + "    " + l.lstrip() for l in llm_stub_lines]
                         updated_content.extend(adjusted_llm_stub_lines)
                         modified = True
                         if next_line_stripped: # If it was 'pass' or '...' skip original next line
@@ -169,7 +177,7 @@ class StubAutoGenerator:
                         if next_line_stripped:
                             i += 1
                 else: # If there's actual code or comments immediately after, just add a TODO above it
-                    updated_content.append(f"{indent}    # TODO: Implement {func_name}\n")
+                    updated_content.append(f"{indent}    # TODO: Implement {func_name}\n")
                     modified = True
             else:
                 updated_content.append(line)
@@ -185,7 +193,7 @@ class StubAutoGenerator:
 
     def _generate_basic_stub(self, indent: str, func_name: str, args: str) -> str:
         """Generates a basic Python stub based on the function's indentation and signature."""
-        stub_indent = indent + "    " # Add one level of indentation for the stub body
+        stub_indent = indent + "    " # Add one level of indentation for the stub body
         # Basic stub structure
         stub = f"{stub_indent}# TODO: Implement functionality for {func_name}\n"
         stub += f"{stub_indent}# Parameters: {args if args else 'None'}\n"
@@ -199,27 +207,93 @@ class StubAutoGenerator:
         """
         await log_info(f"Generating TODO stubs for path: {scan_path}")
         
-        all_todo_items = []
-        
-        # Scan for existing TODOs and incomplete functions
+        # Scan for existing TODOs and incomplete functions (and apply stubs)
         modified_files = await self.scan_directory(scan_path, user_profile=user_profile) # Pass user_profile to scan_directory
 
-        # For a more comprehensive TODO stub generation, we might want to
-        # read the modified files again and extract all TODOs, or
-        # use a dedicated LLM call to summarize/categorize them.
-        # For now, we'll just report on modified files.
+        # NEW: Comprehensive TODO reporting using LLM
+        all_todo_comments = []
+        all_files_to_scan = []
+        if os.path.isdir(scan_path):
+            all_files_to_scan = await list_files_in_directory_recursive(scan_path, include_dirs=False)
+            all_files_to_scan = [f for f in all_files_to_scan if f.endswith('.py') or f.endswith('.md')] # Include markdown for general TODOs
+        elif os.path.isfile(scan_path):
+            all_files_to_scan = [scan_path]
+        
+        for f_path in all_files_to_scan:
+            content = await self._read_file_async(f_path)
+            if content:
+                for line_num, line in enumerate(content.splitlines()):
+                    if "# TODO:" in line:
+                        all_todo_comments.append(f"File: {f_path}, Line {line_num + 1}: {line.strip()}")
         
         stubs_content_lines = [f"# TODO Stubs and Incomplete Functions Report ({datetime.now().isoformat()})\n"]
+        stubs_content_lines.append("\n## Files with Stubs Added/Updated:\n")
         if modified_files:
-            stubs_content_lines.append("\n## Modified Files (Stubs Added/Updated):\n")
             for f in modified_files:
                 stubs_content_lines.append(f"- `{f}`")
         else:
-            stubs_content_lines.append("\n## No incomplete functions found or modified files.\n")
+            stubs_content_lines.append("- None\n")
 
-        # This part could be enhanced by actually reading the TODOs from files
-        # and using an LLM to categorize/prioritize them, leveraging user_profile.
-        
+        if all_todo_comments and self.code_generator and services.get("llm_provider") and services.get("user_profile_manager"):
+            await log_info("Using LLM to categorize and prioritize TODOs.")
+            llm_prompt = f"""
+            Analyze the following list of TODO comments and incomplete function markers from a codebase.
+            Your goal is to categorize them by theme (e.g., "Refactoring", "New Feature", "Bug Fix", "Documentation", "Optimization", "Testing") and prioritize them.
+            For each category, list the related TODOs. Also, provide an overall prioritized list of the top 5 most critical or next-to-do items across all categories.
+
+            TODO Items:
+            {json.dumps(all_todo_comments, indent=2)}
+
+            Format your response as a JSON object with two top-level keys:
+            1. "categorized_todos": A dictionary where keys are categories and values are lists of related TODO strings.
+            2. "prioritized_list": A list of strings representing the top 5 prioritized TODO items.
+
+            Example JSON output:
+            {{
+              "categorized_todos": {{
+                "New Feature": ["File: feature.py, Line 10: # TODO: Implement login logic"],
+                "Refactoring": ["File: old_code.py, Line 50: # TODO: Refactor utility function"]
+              }},
+              "prioritized_list": ["Implement login logic", "Fix database connection bug"]
+            }}
+            """
+            try:
+                llm_categorized_output = await self.code_generator.generate_code(
+                    prompt=llm_prompt,
+                    user_profile=user_profile if user_profile else {}
+                )
+                response_text = llm_categorized_output.get("code", "")
+                
+                # Extract JSON from markdown code block
+                match = self.MARKDOWN_CODE_BLOCK_PATTERN.search(response_text)
+                if match:
+                    json_string = match.group(1).strip()
+                    categorized_data = json.loads(json_string)
+                    
+                    stubs_content_lines.append("\n## Categorized TODOs (AI-Generated):\n")
+                    for category, items in categorized_data.get("categorized_todos", {}).items():
+                        stubs_content_lines.append(f"### {category}\n")
+                        for item in items:
+                            stubs_content_lines.append(f"- {item}")
+                        stubs_content_lines.append("\n") # Add newline after each category
+                    
+                    stubs_content_lines.append("\n## Prioritized Next Steps (AI-Generated):\n")
+                    for item in categorized_data.get("prioritized_list", []):
+                        stubs_content_lines.append(f"- {item}")
+                else:
+                    stubs_content_lines.append("\n## AI-Generated TODO Analysis (Raw LLM Output):\n")
+                    stubs_content_lines.append(response_text)
+            except Exception as e:
+                await log_error(f"Error getting LLM-categorized TODOs: {e}")
+                stubs_content_lines.append("\n## AI-Generated TODO Analysis (Failed):\n")
+                stubs_content_lines.append(f"Failed to generate categorized TODOs: {e}")
+        elif all_todo_comments: # If LLM not available but TODOs exist
+            stubs_content_lines.append("\n## All Found TODO Comments:\n")
+            for item in all_todo_comments:
+                stubs_content_lines.append(f"- {item}")
+        else:
+            stubs_content_lines.append("\n## No explicit # TODO: comments found in scanned files.\n")
+            
         stubs_content = "\n".join(stubs_content_lines)
         
         # Save to output file
@@ -252,4 +326,3 @@ class StubAutoGenerator:
                 modified_files.append(file_paths_order[i])
         
         return modified_files
-

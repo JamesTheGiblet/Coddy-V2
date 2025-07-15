@@ -1,4 +1,11 @@
+// C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\ui\react-app\src\RefactorCode.js
+
 import React, { useState } from 'react';
+
+// Use an environment variable for the API base URL
+// In React, custom environment variables must be prefixed with REACT_APP_
+// Provide a fallback for local development if the environment variable is not set.
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://127.0.0.1:8000';
 
 const RefactorCode = () => {
     const [filePath, setFilePath] = useState('');
@@ -14,7 +21,7 @@ const RefactorCode = () => {
         setRefactoredCode('');
 
         try {
-            const response = await fetch('http://127.0.0.1:8000/api/code/refactor', {
+            const response = await fetch(`${API_BASE_URL}/api/code/refactor`, { // MODIFIED: Using API_BASE_URL
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

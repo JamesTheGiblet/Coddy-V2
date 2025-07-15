@@ -6,6 +6,7 @@ import traceback
 from pathlib import Path
 
 from core.code_generator import CodeGenerator
+from backend.services import services # NEW: Import the centralized services dictionary
 
 @click.command("unit-tester")
 @click.argument("file_path", type=click.Path(exists=True, dir_okay=False))
@@ -20,7 +21,26 @@ def unit_tester(file_path: str):
 
         try:
             source_code = await asyncio.to_thread(target_file.read_text, encoding='utf-8')
-            code_gen = CodeGenerator()
+            
+            # Retrieve initialized services
+            llm_provider = services.get("llm_provider")
+            memory_service = services.get("memory_service")
+            vibe_engine = services.get("vibe_engine")
+            user_profile_manager = services.get("user_profile_manager")
+
+            if not llm_provider or not memory_service or not vibe_engine or not user_profile_manager:
+                click.secho("Error: Core services (LLM, Memory, Vibe, UserProfile) are not initialized.", fg='red', err=True)
+                click.secho("Ensure the Coddy backend API is running and services are loaded.", fg='red', err=True)
+                return 1
+
+            # MODIFIED: Initialize CodeGenerator with its dependencies
+            code_gen = CodeGenerator(
+                llm_provider=llm_provider,
+                memory_service=memory_service,
+                vibe_engine=vibe_engine,
+                user_profile_manager=user_profile_manager
+            )
+            
             # MODIFIED: Pass target_file to generate_tests_for_file
             test_code = await code_gen.generate_tests_for_file(source_code, target_file) 
 

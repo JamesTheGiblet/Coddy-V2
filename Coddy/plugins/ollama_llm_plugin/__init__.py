@@ -2,9 +2,10 @@
 import click
 import requests
 import json
+import os # NEW: Import os
 
 # Default Ollama API endpoint
-OLLAMA_API_URL = "http://localhost:11434/api/generate"
+OLLAMA_API_URL = os.getenv("OLLAMA_API_URL", "http://localhost:11434/api/generate") # MODIFIED: Get from environment variable
 
 @click.group(name="ollama")
 def ollama_group():

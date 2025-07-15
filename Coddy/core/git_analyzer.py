@@ -4,7 +4,9 @@ import asyncio
 import subprocess
 from typing import Optional, List, Dict
 import os
+import shutil # For rmtree # NEW
 from core.idea_synth import IdeaSynthesizer # Assuming IdeaSynthesizer is in core
+from backend.services import services # NEW: Import the centralized services dictionary
 
 class GitAnalyzer:
     """
@@ -128,7 +130,7 @@ class GitAnalyzer:
 
         Returns:
             List[Dict[str, str]]: A list of dictionaries, each representing a commit
-                                   with 'hash', 'author', 'date', 'subject', and 'body'.
+                                    with 'hash', 'author', 'date', 'subject', and 'body'.
         """
         try:
             # Use null byte as a separator for robustness
@@ -173,12 +175,13 @@ class GitAnalyzer:
             str: An AI-generated summary of the repository activity.
         """
         try:
-            commits = await self.get_commit_logs(limit=num_commits)
+            commits = await self.get_commit_logs(num_commits=num_commits) # Changed limit to num_commits
             if not commits:
                 return "No recent commits to summarize."
 
             # Format commit messages into a single string for IdeaSynthesizer
-            commit_messages = "\n".join([c['message'] for c in commits])
+            # Assuming 'subject' is the main message for now
+            commit_messages = "\n".join([c['subject'] + "\n" + c['body'] for c in commits]) # Include body
             
             prompt = (
                 "Summarize the following recent Git commit messages to provide a high-level overview "
@@ -186,60 +189,142 @@ class GitAnalyzer:
                 f"Commit Messages:\n{commit_messages}"
             )
             
-            # Initialize IdeaSynthesizer and get summary
-            idea_synthesizer = IdeaSynthesizer()
-            summary = await idea_synthesizer.summarize_text(prompt)
-            return summary
+            # MODIFIED: Initialize IdeaSynthesizer with dependencies from services
+            llm_provider = services.get("llm_provider")
+            memory_service = services.get("memory_service")
+            user_profile_manager = services.get("user_profile_manager")
+
+            if not llm_provider or not memory_service or not user_profile_manager:
+                return "Error: LLM services not available for summarizing repository activity."
+
+            idea_synthesizer = IdeaSynthesizer(
+                llm_provider=llm_provider,
+                memory_service=memory_service,
+                user_profile_manager=user_profile_manager
+            )
+            summary = await idea_synthesizer.synthesize_idea(
+                prompt=prompt,
+                user_profile=user_profile_manager.profile.model_dump() if user_profile_manager.profile else {}
+            ) # Changed summarize_text to synthesize_idea, assuming it's a general text generation method
+            
+            return summary.get("idea", "Could not generate summary.") # Assuming synthesize_idea returns dict with 'idea' key
         except Exception as e:
             print(f"Error summarizing repository activity: {e}")
             return f"Could not generate summary: {e}"
 
-# Example usage (for testing purposes, typically called by other modules)
-async def main():
-    # You might want to initialize a temporary Git repo here for testing the main function
-    # For now, assumes current directory is a Git repo
-    analyzer = GitAnalyzer()
-    print(f"Current repository path: {analyzer.repo_path}")
+# Example usage for testing purposes - Renamed from main to main_test_git_analyzer
+async def main_test_git_analyzer():
+    print("\n--- Testing GitAnalyzer with Temporary Repo ---")
+    
+    test_repo_dir = "temp_test_git_repo"
+    if os.path.exists(test_repo_dir):
+        shutil.rmtree(test_repo_dir) # Clean up previous test repo if it exists
+    os.makedirs(test_repo_dir)
+    original_cwd = os.getcwd()
+    os.chdir(test_repo_dir) # Change to temporary directory
 
-    # Test get_status
-    status = await analyzer.get_status()
-    print("\n--- Git Status ---")
-    print(status if status else "No changes in working directory.")
+    try:
+        # Initialize a temporary Git repo
+        print(f"Initializing Git repo in {os.getcwd()}")
+        await asyncio.create_subprocess_shell("git init -b main") # Initialize on 'main' branch directly
+        await asyncio.create_subprocess_shell("git config user.email 'test@example.com'")
+        await asyncio.create_subprocess_shell("git config user.name 'Test User'")
 
-    # Test get_branches
-    branches = await analyzer.get_branches()
-    print("\n--- Git Branches ---")
-    if branches:
-        for branch in branches:
-            print(f"- {branch}")
-    else:
-        print("No branches found.")
+        # Create some dummy files and commits
+        with open("file1.txt", "w") as f:
+            f.write("Initial content")
+        await asyncio.create_subprocess_shell("git add file1.txt")
+        await asyncio.create_subprocess_shell("git commit -m 'feat: Initial commit with file1'")
 
-    # Test get_current_branch
-    current_branch = await analyzer.get_current_branch()
-    print("\n--- Current Branch ---")
-    print(current_branch if current_branch else "Detached HEAD or no branch.")
+        with open("file2.txt", "w") as f:
+            f.write("Second file content")
+        await asyncio.create_subprocess_shell("git add file2.txt")
+        await asyncio.create_subprocess_shell("git commit -m 'fix: Add file2'")
 
-    # Test get_commit_logs
-    commits = await analyzer.get_commit_logs(limit=3)
-    print("\n--- Recent Commits ---")
-    if commits:
-        for commit in commits:
-            print(f"Hash: {commit['hash']}")
-            print(f"Author: {commit['author']}")
-            print(f"Date: {commit['date']}")
-            print(f"Message: {commit['message']}\n")
-    else:
-        print("No commits found.")
+        with open("file1.txt", "a") as f:
+            f.write("\nAppended content")
+        await asyncio.create_subprocess_shell("git add file1.txt")
+        await asyncio.create_subprocess_shell("git commit -m 'docs: Update file1 with more info'")
 
-    # Test summarize_repo_activity
-    repo_summary = await analyzer.summarize_repo_activity(num_commits=5)
-    print("\n--- Repository Activity Summary (AI-Generated) ---")
-    print(repo_summary)
+        analyzer = GitAnalyzer()
+        print(f"Current repository path: {analyzer.repo_path}")
+
+        # Test get_status
+        status = await analyzer.get_status()
+        print("\n--- Git Status ---")
+        print(status if status else "No changes in working directory.")
+        assert "no changes" in status.lower() # Should be clean after commits
+
+        # Test get_branches
+        branches = await analyzer.get_branches()
+        print("\n--- Git Branches ---")
+        if branches:
+            for branch in branches:
+                print(f"- {branch}")
+            assert "main" in branches
+        else:
+            print("No branches found.")
+
+        # Test get_current_branch
+        current_branch = await analyzer.get_current_branch()
+        print("\n--- Current Branch ---")
+        print(current_branch if current_branch else "Detached HEAD or no branch.")
+        assert current_branch == "main"
+
+        # Test get_commit_logs
+        commits = await analyzer.get_commit_logs(num_commits=3)
+        print("\n--- Recent Commits ---")
+        if commits:
+            for commit in commits:
+                print(f"Hash: {commit['hash']}")
+                print(f"Author: {commit['author']}")
+                print(f"Date: {commit['date']}")
+                print(f"Subject: {commit['subject']}")
+                print(f"Body: {commit['body']}\n")
+            assert len(commits) == 3
+            assert "feat: Initial commit" in commits[2]['subject'] # Check oldest commit
+        else:
+            print("No commits found.")
+
+        # Test summarize_repo_activity (requires LLM services to be initialized in backend)
+        # This part of the test might need the actual backend/main.py running.
+        # For an isolated test, mock IdeaSynthesizer's LLM interaction.
+        print("\n--- Repository Activity Summary (AI-Generated) ---")
+        # Ensure services are set up for this standalone test if needed
+        # (This block assumes services are manually setup or mocked for test context)
+        from core.llm_provider import MockLLMProvider # Assuming a mock LLM provider exists
+        from core.memory_service import MemoryService # Used by UserProfile
+        from core.user_profile import UserProfile # Used by IdeaSynthesizer
+
+        _temp_memory_service = MemoryService(session_id="test_git_llm_session", user_id="test_git_llm_user")
+        _temp_user_profile = UserProfile(session_id="test_git_llm_session", user_id="test_git_llm_user", memory_service=_temp_memory_service)
+        await _temp_user_profile.initialize()
+        _temp_llm_provider = MockLLMProvider() # Use the mock here
+
+        # Manually populate services dict just for this test
+        services['llm_provider'] = _temp_llm_provider
+        services['memory_service'] = _temp_memory_service
+        services['user_profile_manager'] = _temp_user_profile
+
+        repo_summary = await analyzer.summarize_repo_activity(num_commits=3)
+        print(repo_summary)
+        # Assert that the summary contains expected mock text or format
+        assert "mock-llm generated response" in repo_summary or "Could not generate summary" in repo_summary
+        
+    except FileNotFoundError as e:
+        print(f"Test Setup Error: {e}. Please ensure Git is installed.")
+    except Exception as e:
+        print(f"GitAnalyzer Test Failed: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        os.chdir(original_cwd) # Change back to original directory
+        if os.path.exists(test_repo_dir):
+            shutil.rmtree(test_repo_dir) # Clean up temporary directory
+            print(f"\nCleaned up temporary repo: {test_repo_dir}")
+        
+    print("\n--- End of GitAnalyzer Tests ---")
 
 
 if __name__ == "__main__":
-    # To run this example, ensure you are in a Git repository or set repo_path
-    # You would typically set up a dummy git repo for testing this locally
-    # asyncio.run(main())
-    pass # Keep pass to avoid running on import by default
+    asyncio.run(main_test_git_analyzer())
