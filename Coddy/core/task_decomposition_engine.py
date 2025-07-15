@@ -7,7 +7,7 @@ from typing import List, Dict, Any, Optional # Added for type hints
 
 # NEW: Import LLMProvider for type hinting
 from core.llm_provider import LLMProvider
-from core.logging_utility import get_logger # NEW: Import get_logger
+from core.logging_utility import logger # MODIFIED: Import logger directly
 
 # Load environment variables from .env file
 load_dotenv() 
@@ -18,13 +18,14 @@ class TaskDecompositionEngine:
     with the ability to tailor the decomposition based on a user's profile.
     """
     # MODIFIED: Accept llm_provider instance directly
-    def __init__(self, llm_provider: LLMProvider):
+    def __init__(self, llm_provider: LLMProvider, user_profile_manager: Optional[Any] = None):
+
         """
         Initializes the TaskDecompositionEngine with an LLM provider.
         The LLM configuration can be dynamically influenced by user profile settings.
         """
         self.llm_provider = llm_provider # Store the LLMProvider instance
-        self.logger = get_logger(__name__) # NEW: Initialize logger
+        self.logger = logger # MODIFIED: Use the directly imported logger instance
         # Removed internal ChatGoogleGenerativeAI instantiation
 
     async def decompose(self, goal: str, user_profile: Optional[Dict[str, Any]] = None) -> list[str]:

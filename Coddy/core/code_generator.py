@@ -17,7 +17,7 @@ try:
     from core.idea_synth import IdeaSynthesizer
     from core.memory_service import MemoryService
     from core.vibe_mode import VibeModeEngine
-    from core.logging_utility import log_info, log_warning, log_error, log_debug, get_logger # MODIFIED: Import get_logger
+    from core.logging_utility import log_info, log_warning, log_error, log_debug, logger # MODIFIED: Import logger directly
     from core.user_profile import UserProfile
     from core.llm_provider import LLMProvider # NEW: Import LLMProvider for type hinting
     from core.utility_functions import save_generated_file # MODIFIED: Renamed import
@@ -41,7 +41,7 @@ class CodeGenerator:
                  user_profile_manager: Optional[Any] = None):
         self.user_profile_manager = user_profile_manager # Store the user profile manager
         self.llm_provider = llm_provider # Store the LLMProvider instance
-        self.logger = get_logger(__name__) # NEW: Initialize logger
+        self.logger = logger # MODIFIED: Use the directly imported logger instance
         
         # MODIFIED: Pass llm_provider to IdeaSynthesizer
         self.idea_synthesizer = IdeaSynthesizer(

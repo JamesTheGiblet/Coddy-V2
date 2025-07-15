@@ -116,6 +116,40 @@ async def list_files(directory_path: str = './') -> list[str]:
         print(f"Error listing directory '{absolute_path}': {e}")
         raise
 
+async def list_files_in_directory_recursive(directory_path: str) -> list[str]:
+    """
+    Asynchronously lists all files recursively within a specified directory,
+    returning paths relative to the project root.
+
+    Args:
+        directory_path: The path to the directory to list (relative to project root).
+
+    Returns:
+        A list of strings, where each string is the relative path to a file.
+
+    Raises:
+        FileNotFoundError: If the directory does not exist.
+    """
+    absolute_path = await safe_path(directory_path)
+    try:
+        if not os.path.isdir(absolute_path):
+            raise FileNotFoundError(f"Directory not found: '{absolute_path}'")
+        
+        all_files = []
+        for root, _, files in os.walk(absolute_path):
+            for name in files:
+                file_abs_path = os.path.join(root, name)
+                # Get path relative to the PROJECT_ROOT for consistency
+                relative_to_root = os.path.relpath(file_abs_path, PROJECT_ROOT)
+                all_files.append(relative_to_root.replace('\\', '/')) # Normalize path separators
+        return all_files
+    except FileNotFoundError:
+        print(f"Error: Directory not found at '{absolute_path}'")
+        raise
+    except Exception as e:
+        print(f"Error listing directory recursively '{absolute_path}': {e}")
+        raise
+
 async def save_generated_file(content: str, file_name: str, category: str, project_name: Optional[str] = None):
     """
     Saves generated content to a file within a structured output directory.

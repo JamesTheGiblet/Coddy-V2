@@ -1,12 +1,16 @@
 # C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\dashboard_api.py
 
 import httpx
+import sys, os
 import json
 from typing import Dict, Any, Optional, List
 
-from Coddy.core.config import API_BASE_URL # MODIFIED: Import API_BASE_URL from config.py
+from core.config import API_BASE_URL # MODIFIED: Import API_BASE_URL from config.py
 
 # REMOVED: API_BASE_URL = "http://127.0.0.1:8000/api"
+
+# Add project root to Python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 async def get_roadmap():
     """Fetches the project roadmap from the Coddy API."""

@@ -8,8 +8,6 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 import json
 
-from code_generator import CodeGenerator
-from user_profile import UserProfile # NEW: Import json
 
 # Add Coddy/core to the Python path for importing MemoryService
 # Corrected import path for VibeFileManager from the 'vibe' package
@@ -486,11 +484,8 @@ async def main_test_vibe_mode_engine():
     # but for a quick direct test of this file's main function, we can add simple mocks.
     # Defining MockLLMProvider and CodeGenerator imports here just for the test block.
     # from core.llm_provider import MockLLMProvider # Need to ensure this mock exists or create one
-    # from core.code_generator import CodeGenerator # This class needs its actual dependencies
-    # from core.user_profile import UserProfile # This class needs MemoryService
-
-
-    # Simple MockLLMProvider for isolated testing if not already available
+    from core.code_generator import CodeGenerator # This class needs its actual dependencies
+    from core.user_profile import UserProfile # This class needs MemoryService
     class MockLLMProvider:
         def __init__(self, model_name="mock-llm"):
             self.model_name = model_name
@@ -500,8 +495,6 @@ async def main_test_vibe_mode_engine():
                 return json.dumps({"suggestion": "Refactor authentication for improved security.", "task_details": {"phase": "Phase 17", "description": "Implement Secure API Key Management"}})
             elif "Implement Dynamic Skill Invocation" in prompt:
                 return json.dumps({"suggestion": "Focus on implementing dynamic skill invocation within the agent.", "task_details": {"phase": "Phase 17", "description": "Implement Dynamic Skill Invocation"}})
-            else:
-                return json.dumps({"suggestion": "Review recent activity and prioritize a task from the roadmap or a new emerging need.", "task_details": {}})
                 
     # Re-initialize services for this specific test case, ensuring mocks are used
     # This part is highly specific to how tests are run. In a real app, backend/main.py would handle this.
