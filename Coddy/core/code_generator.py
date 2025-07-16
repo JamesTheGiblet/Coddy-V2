@@ -20,7 +20,7 @@ try:
     from core.logging_utility import log_info, log_warning, log_error, log_debug, logger # MODIFIED: Import logger directly
     from core.user_profile import UserProfile
     from core.llm_provider import LLMProvider # NEW: Import LLMProvider for type hinting
-    from core.utility_functions import save_generated_file # MODIFIED: Renamed import
+    from core.utility_functions import save_generated_file, write_file # MODIFIED: Renamed import, Added write_file directly to allow its use
     
 except ImportError as e:
     print(f"FATAL ERROR: Could not import core modules required for CodeGenerator: {e}", file=sys.stderr)
@@ -188,8 +188,8 @@ class CodeGenerator:
             return f"# Error generating code: {e}"
 
     async def generate_code_fix(self, file_path: str, output_file: Optional[str] = None, 
-                                context: Optional[Dict[str, Any]] = None,
-                                user_profile: Optional[Dict[str, Any]] = None) -> str:
+                                 context: Optional[Dict[str, Any]] = None,
+                                 user_profile: Optional[Dict[str, Any]] = None) -> str:
         """
         Generates a code fix, delegating personalization and logging to IdeaSynthesizer.
         If output_file is provided, saves the generated content to a timestamped folder.
@@ -245,3 +245,28 @@ class CodeGenerator:
                 }
                 await self.user_profile_manager.update_last_interaction_summary(summary)
             return corrected_code
+
+# --- Refactored file saving helpers leveraging save_generated_file ---
+async def save_generated_code(content: str, filename: str, project_name: Optional[str] = None):
+    """
+    Save AI-generated code to Coddy_code/Auto_gen_code/, leveraging save_generated_file.
+    """
+    await save_generated_file(content=content, file_name=filename, category="auto_gen_code", project_name=project_name)
+
+async def save_refactored_code(content: str, filename: str, project_name: Optional[str] = None):
+    """
+    Save refactored code to Coddy_code/Refactored_code/, leveraging save_generated_file.
+    """
+    await save_generated_file(content=content, file_name=filename, category="refactored_code", project_name=project_name)
+
+async def save_written_code(content: str, filename: str, project_name: Optional[str] = None):
+    """
+    Save user-written code to Coddy_code/Written_code/, leveraging save_generated_file.
+    """
+    await save_generated_file(content=content, file_name=filename, category="written_code", project_name=project_name)
+
+async def save_test_code(content: str, filename: str, project_name: Optional[str] = None):
+    """
+    Save generated test code to Coddy_code/Test_code/, leveraging save_generated_file.
+    """
+    await save_generated_file(content=content, file_name=filename, category="test_code", project_name=project_name)

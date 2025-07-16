@@ -1,57 +1,27 @@
-# C:\Users\gilbe\Documents\GitHub\Coddy_V2\Coddy\core\utility_functions.py
-
 import os
 import asyncio
-import aiofiles # For asynchronous file I/O
+import aiofiles
 import sys
-from datetime import datetime # Import datetime for timestamps
-from typing import Optional # Import Optional for type hinting
+from datetime import datetime
+from typing import Optional
 
-# Define base project directory relative to where this script might be run
-# Adjust this if your execution context differs significantly
+# Define base project directory
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
+# Define Coddy_code customer-facing base directory
+CUSTOMER_CODE_BASE_DIR = os.path.normpath(os.path.join(PROJECT_ROOT, "..", "Coddy_code"))
+
 async def safe_path(relative_path: str) -> str:
-    """
-    Constructs a safe, absolute path within the Coddy project root.
-    Prevents directory traversal attacks by ensuring the resulting path
-    is always a child of the project root.
-
-    Args:
-        relative_path: The path relative to the Coddy project root.
-
-    Returns:
-        The validated absolute path.
-
-    Raises:
-        ValueError: If the path attempts to go outside the project root.
-    """
     abs_path = os.path.abspath(os.path.join(PROJECT_ROOT, relative_path))
-
-    # Ensure the path is within the project root
     if not abs_path.startswith(PROJECT_ROOT):
         raise ValueError(f"Attempted path '{relative_path}' is outside the project root.")
     return abs_path
 
 async def read_file(file_path: str) -> str:
-    """
-    Asynchronously reads the content of a specified file.
-
-    Args:
-        file_path: The path to the file to read (relative to project root).
-
-    Returns:
-        The content of the file as a string.
-
-    Raises:
-        FileNotFoundError: If the file does not exist.
-        IOError: For other file I/O errors.
-    """
     absolute_path = await safe_path(file_path)
     try:
         async with aiofiles.open(absolute_path, mode='r', encoding='utf-8') as f:
-            content = await f.read()
-            return content
+            return await f.read()
     except FileNotFoundError:
         print(f"Error: File not found at '{absolute_path}'")
         raise
@@ -60,19 +30,7 @@ async def read_file(file_path: str) -> str:
         raise
 
 async def write_file(file_path: str, content: str) -> None:
-    """
-    Asynchronously writes content to a specified file.
-    Creates parent directories if they don't exist.
-
-    Args:
-        file_path: The path to the file to write (relative to project root).
-        content: The string content to write to the file.
-
-    Raises:
-        IOError: For file I/O errors.
-    """
     absolute_path = await safe_path(file_path)
-
     dir_path = os.path.dirname(absolute_path)
     if dir_path and not os.path.exists(dir_path):
         try:
@@ -80,7 +38,6 @@ async def write_file(file_path: str, content: str) -> None:
         except OSError as e:
             print(f"Failed to create directory for path '{absolute_path}': {e}")
             raise
-
     try:
         async with aiofiles.open(absolute_path, mode='w', encoding='utf-8') as f:
             await f.write(content)
@@ -89,21 +46,7 @@ async def write_file(file_path: str, content: str) -> None:
         print(f"Error writing to file '{absolute_path}': {e}")
         raise
 
-
 async def list_files(directory_path: str = './') -> list[str]:
-    """
-    Asynchronously lists files and directories within a specified directory.
-
-    Args:
-        directory_path: The path to the directory to list (relative to project root).
-
-    Returns:
-        A list of strings, where each string is the name of a file or directory.
-
-    Raises:
-        FileNotFoundError: If the directory does not exist.
-        IOError: For other file I/O errors.
-    """
     absolute_path = await safe_path(directory_path)
     try:
         if not os.path.isdir(absolute_path):
@@ -117,31 +60,16 @@ async def list_files(directory_path: str = './') -> list[str]:
         raise
 
 async def list_files_in_directory_recursive(directory_path: str) -> list[str]:
-    """
-    Asynchronously lists all files recursively within a specified directory,
-    returning paths relative to the project root.
-
-    Args:
-        directory_path: The path to the directory to list (relative to project root).
-
-    Returns:
-        A list of strings, where each string is the relative path to a file.
-
-    Raises:
-        FileNotFoundError: If the directory does not exist.
-    """
     absolute_path = await safe_path(directory_path)
     try:
         if not os.path.isdir(absolute_path):
             raise FileNotFoundError(f"Directory not found: '{absolute_path}'")
-        
         all_files = []
         for root, _, files in os.walk(absolute_path):
             for name in files:
                 file_abs_path = os.path.join(root, name)
-                # Get path relative to the PROJECT_ROOT for consistency
                 relative_to_root = os.path.relpath(file_abs_path, PROJECT_ROOT)
-                all_files.append(relative_to_root.replace('\\', '/')) # Normalize path separators
+                all_files.append(relative_to_root.replace('\\', '/'))
         return all_files
     except FileNotFoundError:
         print(f"Error: Directory not found at '{absolute_path}'")
@@ -150,103 +78,88 @@ async def list_files_in_directory_recursive(directory_path: str) -> list[str]:
         print(f"Error listing directory recursively '{absolute_path}': {e}")
         raise
 
+# === New Coddy_code Helpers ===
+
+async def save_generated_code(content: str, filename: str):
+    """Save AI-generated code to Coddy_code/Auto_gen_code/"""
+    target_path = os.path.join("Coddy_code", "Auto_gen_code", filename)
+    await write_file(target_path, content)
+
+async def save_refactored_code(content: str, filename: str):
+    """Save refactored code to Coddy_code/Refactored_code/"""
+    target_path = os.path.join("Coddy_code", "Refactored_code", filename)
+    await write_file(target_path, content)
+
+async def save_written_code(content: str, filename: str):
+    """Save user-written code to Coddy_code/Written_code/"""
+    target_path = os.path.join("Coddy_code", "Written_code", filename)
+    await write_file(target_path, content)
+
+async def save_test_code(content: str, filename: str):
+    """Save test code to Coddy_code/Test_code/"""
+    target_path = os.path.join("Coddy_code", "Test_code", filename)
+    await write_file(target_path, content)
+
+async def save_to_coddy_code_folder(content: str, filename: str, category: str):
+    """Dispatch save to correct Coddy_code subfolder by category."""
+    folder_map = {
+        "auto": "Auto_gen_code",
+        "refactor": "Refactored_code",
+        "write": "Written_code",
+        "test": "Test_code"
+    }
+    if category not in folder_map:
+        raise ValueError(f"Invalid category '{category}'. Must be one of {list(folder_map.keys())}")
+    target_path = os.path.join("Coddy_code", folder_map[category], filename)
+    await write_file(target_path, content)
+
+# === Existing save_generated_file (for documentation etc) ===
+
 async def save_generated_file(content: str, file_name: str, category: str, project_name: Optional[str] = None):
-    """
-    Saves generated content to a file within a structured output directory.
-    If project_name is provided, it creates a project-specific folder:
-    'generated_output/{project_name}/{file_name}'.
-    Otherwise, it creates a timestamped category folder:
-    'generated_output/{category}/{file_name_without_ext}_{timestamp}/{file_name}'.
-    
-    Args:
-        content (str): The content to save to the file.
-        file_name (str): The name of the file, including its extension (e.g., "README.md", "main.py").
-        category (str): A string representing the category of the file (e.g., "changelogs", "roadmaps", "readmes", "requirements", "code").
-        project_name (Optional[str]): The name of the project. If provided, files are saved into 'generated_output/{project_name}/'.
-                                      If None, the old timestamped category folder logic is used.
-    """
     try:
-        base_output_dir = "generated_output" 
-        
+        base_output_dir = "generated_output"
         if project_name:
-            # Create a project-specific directory: generated_output/project_name/
             target_dir = os.path.join(base_output_dir, project_name)
             full_file_path = os.path.join(target_dir, file_name)
             print(f"Saving to project-specific directory: {target_dir}")
         else:
-            # Fallback to the previous timestamped category folder logic
-            # This is primarily for non-project-specific outputs (like standalone changelogs)
             file_name_without_ext = os.path.splitext(file_name)[0]
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            
             category_dir = os.path.join(base_output_dir, category)
             target_dir = os.path.join(category_dir, f"{file_name_without_ext}_{timestamp}")
             full_file_path = os.path.join(target_dir, file_name)
             print(f"Saving to timestamped category directory: {target_dir}")
-
         os.makedirs(target_dir, exist_ok=True)
-        print(f"Created directory: {target_dir}")
-
         await write_file(full_file_path, content)
         print(f"File saved to {full_file_path}")
     except Exception as e:
         print(f"Error saving file '{file_name}' in category '{category}' (Project: {project_name}): {e}")
         raise
 
-# Removed execute_command function as it has been moved to core/execution_manager.py
+# === Optional CLI Test Driver ===
 
-# Example Usage (for testing the utility functions)
 async def main_test_utilities():
     print("\n--- Testing Core Utility Functions ---")
 
-    # Test safe_path
-    try:
-        safe_p = await safe_path("tests/temp_file.txt")
-        print(f"Safe path for 'tests/temp_file.txt': {safe_p}")
-        # This should raise an error
-        # await safe_path("../illegal_file.txt")
-    except ValueError as e:
-        print(f"Caught expected error for unsafe path: {e}")
-
-    # Test write_file and read_file
+    # Test write/read
     test_file = "data/test_file.txt"
     test_content = "Hello, Coddy! This is a test file."
-    try:
-        await write_file(test_file, test_content)
-        read_content = await read_file(test_file)
-        print(f"Read content from '{test_file}': '{read_content}' (Matches: {read_content == test_content})")
-    except Exception as e:
-        print(f"File R/W Test Failed: {e}")
+    await write_file(test_file, test_content)
+    read_back = await read_file(test_file)
+    print(f"Read back: {read_back} == Original: {read_back == test_content}")
 
-    # Test list_files
-    try:
-        print(f"\nListing files in 'Coddy/core/': {await list_files('core/')}")
-        print(f"Listing files in 'Coddy/backend/': {await list_files('backend/')}")
-        print(f"Listing files in 'Coddy/data/': {await list_files('data/')}")
-    except Exception as e:
-        print(f"List Files Test Failed: {e}")
+    # Save test files to Coddy_code folders
+    await save_generated_code("# auto gen", "auto_example.py")
+    await save_refactored_code("# refactored", "refactor_example.py")
+    await save_written_code("# written", "written_example.py")
+    await save_test_code("def test(): pass", "test_example.py")
 
-    # Test save_generated_file with project_name (NEW desired behavior)
-    test_content_project = "This content should be in a project folder."
-    try:
-        await save_generated_file(test_content_project, "project_readme.md", "readmes", project_name="my_new_app")
-        await save_generated_file("print('Hello, project!')", "main.py", "code", project_name="my_new_app")
-    except Exception as e:
-        print(f"Project-based Save Test Failed: {e}")
+    # Generic dispatcher
+    await save_to_coddy_code_folder("print('dispatcher')", "dispatcher_example.py", "auto")
 
-    # Test save_generated_file without project_name (fallback to timestamped category)
-    test_content_timestamped = "This content should be in a timestamped folder."
-    try:
-        await save_generated_file(test_content_timestamped, "test_doc.md", "documents")
-    except Exception as e:
-        print(f"Timestamped Save Test Failed: {e}")
-
-    print("\n--- End of Utility Function Tests ---")
+    # Save doc to generated_output
+    await save_generated_file("This is a README", "README.md", "readmes", project_name="coddy_v2")
 
 if __name__ == "__main__":
-    # To run this, you need to have aiofiles installed: pip install aiofiles
-    # Ensure you run the `coddy_setup.py` first to create the directories.
-    print("Ensure you have `aiofiles` installed (`pip install aiofiles`) and")
-    print("the `Coddy` directory structure created before running this directly.")
-    # Uncomment the line below to run the tests
-    # asyncio.run(main_test_utilities())
+    print("Running Coddy utility function tests...")
+    asyncio.run(main_test_utilities())
